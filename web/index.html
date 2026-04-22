@@ -19,18 +19,52 @@
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="English Effective Course">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="englisheffectivecourse">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Effective English">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>englisheffectivecourse</title>
+  <title>Effective English Course</title>
   <link rel="manifest" href="manifest.json">
+
+  <script>
+    // ── PWA Install prompt ────────────────────────────────────────────────
+    window.pwaInstallAvailable = false;
+    window.deferredInstallPrompt = null;
+
+    window.addEventListener('beforeinstallprompt', function (e) {
+      e.preventDefault();
+      window.deferredInstallPrompt = e;
+      window.pwaInstallAvailable = true;
+      // Notifica o Flutter, se ele já estiver ouvindo
+      if (typeof window.onPwaInstallAvailable === 'function') {
+        window.onPwaInstallAvailable();
+      }
+    });
+
+    window.triggerPwaInstall = function () {
+      if (window.deferredInstallPrompt) {
+        window.deferredInstallPrompt.prompt();
+        window.deferredInstallPrompt.userChoice.then(function (choice) {
+          window.deferredInstallPrompt = null;
+          window.pwaInstallAvailable = false;
+        });
+      }
+    };
+
+    window.addEventListener('appinstalled', function () {
+      window.pwaInstallAvailable = false;
+      window.deferredInstallPrompt = null;
+    });
+    // ─────────────────────────────────────────────────────────────────────
+  </script>
 </head>
 <body>
   <!--

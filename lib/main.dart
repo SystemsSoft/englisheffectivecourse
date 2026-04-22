@@ -4,6 +4,7 @@ import 'viewmodels/user_viewmodel.dart';
 import 'viewmodels/upload_viewmodel.dart';
 import 'LoginScreen.dart';
 import 'app_theme.dart';
+import 'pwa_install_banner.dart';
 
 void main() {
   runApp(const MyApp());
@@ -22,6 +23,7 @@ class MyApp extends StatelessWidget {
       child: MaterialApp(
         title: 'English Effective Course',
         theme: AppTheme.light,
+        builder: (context, child) => PwaInstallWrapper(child: child!),
         home: const LoginScreen(),
       ),
     );

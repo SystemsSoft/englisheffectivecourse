@@ -1,11 +1,11 @@
 {
-    "name": "englisheffectivecourse",
-    "short_name": "englisheffectivecourse",
+    "name": "Effective English Course",
+    "short_name": "Effective English",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "English Effective Course",
+    "background_color": "#1A2150",
+    "theme_color": "#1A2150",
+    "description": "Effective English Course - Renata Cerqueira",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
