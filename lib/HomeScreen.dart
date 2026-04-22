@@ -2,16 +2,34 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'viewmodels/user_viewmodel.dart';
+import 'viewmodels/upload_viewmodel.dart';
 import 'LoginScreen.dart';
 import 'app_theme.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final user = context.read<UserViewModel>().user;
+      if (user != null) {
+        context.read<UploadViewModel>().fetchByClassName(user.className);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final user = context.watch<UserViewModel>().user;
+    final uploadVM = context.watch<UploadViewModel>();
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
@@ -44,8 +62,8 @@ class HomeScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 12),
 
-                    // Placeholder aulas
-                    _EmptyLessonsCard(textTheme: textTheme),
+                    // Lista de aulas
+                    _LessonsSection(vm: uploadVM, textTheme: textTheme),
                   ],
                 ),
               ),
@@ -312,12 +330,71 @@ class _InfoTile extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Placeholder de aulas
+// Seção de aulas (loading / erro / vazia / lista)
 // ─────────────────────────────────────────────────────────────────────────────
-class _EmptyLessonsCard extends StatelessWidget {
+class _LessonsSection extends StatelessWidget {
+  final UploadViewModel vm;
   final TextTheme textTheme;
 
-  const _EmptyLessonsCard({required this.textTheme});
+  const _LessonsSection({required this.vm, required this.textTheme});
+
+  @override
+  Widget build(BuildContext context) {
+    switch (vm.status) {
+      case UploadStatus.loading:
+      case UploadStatus.idle:
+        return const Center(
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: CircularProgressIndicator(color: AppColors.navyBlue),
+          ),
+        );
+
+      case UploadStatus.error:
+        return _MessageCard(
+          icon: Icons.error_outline_rounded,
+          iconColor: AppColors.red,
+          title: 'Erro ao carregar aulas',
+          subtitle: vm.errorMessage ?? 'Tente novamente mais tarde.',
+          textTheme: textTheme,
+        );
+
+      case UploadStatus.success:
+        if (vm.uploads.isEmpty) {
+          return _MessageCard(
+            icon: Icons.menu_book_rounded,
+            iconColor: AppColors.navyBlue,
+            title: 'Nenhuma aula disponível',
+            subtitle: 'Suas aulas aparecerão aqui\nquando estiverem disponíveis.',
+            textTheme: textTheme,
+          );
+        }
+        return Column(
+          children: vm.uploads
+              .map((upload) => _LessonCard(upload: upload, textTheme: textTheme))
+              .toList(),
+        );
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Card genérico de mensagem (vazio / erro)
+// ─────────────────────────────────────────────────────────────────────────────
+class _MessageCard extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+  final TextTheme textTheme;
+
+  const _MessageCard({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+    required this.textTheme,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -339,22 +416,18 @@ class _EmptyLessonsCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFFDDE3FF), Color(0xFFFFDADA)],
+              gradient: LinearGradient(
+                colors: [const Color(0xFFDDE3FF), iconColor.withValues(alpha: 0.15)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(60),
             ),
-            child: const Icon(
-              Icons.menu_book_rounded,
-              size: 48,
-              color: AppColors.navyBlue,
-            ),
+            child: Icon(icon, size: 48, color: iconColor),
           ),
           const SizedBox(height: 16),
           Text(
-            'Nenhuma aula disponível',
+            title,
             style: textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.bold,
               color: AppColors.navyBlue,
@@ -362,7 +435,7 @@ class _EmptyLessonsCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Suas aulas aparecerão aqui\nquando estiverem disponíveis.',
+            subtitle,
             textAlign: TextAlign.center,
             style: textTheme.bodySmall?.copyWith(
               color: const Color(0xFF767AA8),
@@ -374,3 +447,88 @@ class _EmptyLessonsCard extends StatelessWidget {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Card individual de aula
+// ─────────────────────────────────────────────────────────────────────────────
+class _LessonCard extends StatelessWidget {
+  final dynamic upload;
+  final TextTheme textTheme;
+
+  const _LessonCard({required this.upload, required this.textTheme});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasVideo = upload.videoName != null && upload.videoName!.isNotEmpty;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x101A2150),
+            blurRadius: 10,
+            offset: Offset(0, 3),
+          ),
+        ],
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF1A2150), Color(0xFF3D4FA0)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(
+            hasVideo ? Icons.play_circle_outline_rounded : Icons.article_outlined,
+            color: Colors.white,
+            size: 26,
+          ),
+        ),
+        title: Text(
+          upload.title ?? '',
+          style: textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: AppColors.navyBlue,
+          ),
+        ),
+        subtitle: hasVideo
+            ? Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Row(
+                  children: [
+                    const Icon(Icons.videocam_outlined, size: 14, color: AppColors.red),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        upload.videoName!,
+                        style: textTheme.labelSmall?.copyWith(
+                          color: const Color(0xFF767AA8),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : null,
+        trailing: const Icon(
+          Icons.chevron_right_rounded,
+          color: AppColors.navyBlue,
+        ),
+        onTap: () {
+          // TODO: navegar para player de vídeo
+        },
+      ),
+    );
+  }
+}
+

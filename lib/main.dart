@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'viewmodels/user_viewmodel.dart';
+import 'viewmodels/upload_viewmodel.dart';
 import 'LoginScreen.dart';
 import 'app_theme.dart';
 
@@ -13,8 +14,11 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => UserViewModel(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => UserViewModel()),
+        ChangeNotifierProvider(create: (_) => UploadViewModel()),
+      ],
       child: MaterialApp(
         title: 'English Effective Course',
         theme: AppTheme.light,
