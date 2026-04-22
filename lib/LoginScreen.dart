@@ -162,21 +162,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       if (value == null || value.trim().isEmpty) {
                         return 'Por favor, informe sua senha';
                       }
-                      if (value.trim().length < 6) {
-                        return 'A senha deve ter no mínimo 6 caracteres';
-                      }
                       return null;
                     },
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Esqueceu a senha
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: () {},
-                      child: const Text('Esqueceu a senha?'),
-                    ),
                   ),
                   const SizedBox(height: 24),
 
