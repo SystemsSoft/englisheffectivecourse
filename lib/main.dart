@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'viewmodels/user_viewmodel.dart';
 import 'LoginScreen.dart';
+import 'app_theme.dart';
 
 void main() {
   runApp(const MyApp());
@@ -16,10 +17,7 @@ class MyApp extends StatelessWidget {
       create: (_) => UserViewModel(),
       child: MaterialApp(
         title: 'English Effective Course',
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-          useMaterial3: true,
-        ),
+        theme: AppTheme.light,
         home: const LoginScreen(),
       ),
     );
