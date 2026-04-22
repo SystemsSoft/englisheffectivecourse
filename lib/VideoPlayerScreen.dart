@@ -47,9 +47,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         autoPlay: true,
         looping: false,
         allowFullScreen: true,
+        fullScreenByDefault: false,
         allowMuting: true,
         showControls: true,
+        deviceOrientationsOnEnterFullScreen: [
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ],
         deviceOrientationsAfterFullScreen: [DeviceOrientation.portraitUp],
+        systemOverlaysOnEnterFullScreen: const [],
+        systemOverlaysAfterFullScreen: SystemUiOverlay.values,
         placeholder: Container(color: AppColors.navyBlue),
         materialProgressColors: ChewieProgressColors(
           playedColor: AppColors.red,
