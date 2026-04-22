@@ -1,4 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'services/access_service.dart';
+import 'models/access_model.dart';
+import 'models/user_model.dart';
+import 'viewmodels/user_viewmodel.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -12,6 +17,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final _nameController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _isLoading = false;
+  final _accessService = AccessService();
 
   @override
   void dispose() {
@@ -20,11 +27,43 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _onLogin() {
-    if (_formKey.currentState!.validate()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Entrando...')),
+  void _onLogin() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final AccessDto aluno = await _accessService.login(
+        _nameController.text.trim(),
+        _passwordController.text.trim(),
       );
+
+      if (!mounted) return;
+
+      // Salva o usuário no ViewModel para uso posterior
+      context.read<UserViewModel>().setUser(
+            User(
+              name: aluno.name,
+              classCode: aluno.classCode,
+              className: aluno.className,
+            ),
+          );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Bem-vindo, ${aluno.name}!')),
+      );
+
+      // TODO: navegar para a próxima tela
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -120,10 +159,10 @@ class _LoginScreenState extends State<LoginScreen> {
                       fillColor: colorScheme.surfaceContainerHighest,
                     ),
                     validator: (value) {
-                      if (value == null || value.isEmpty) {
+                      if (value == null || value.trim().isEmpty) {
                         return 'Por favor, informe sua senha';
                       }
-                      if (value.length < 6) {
+                      if (value.trim().length < 6) {
                         return 'A senha deve ter no mínimo 6 caracteres';
                       }
                       return null;
@@ -143,17 +182,23 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   // Botão Entrar
                   FilledButton(
-                    onPressed: _onLogin,
+                    onPressed: _isLoading ? null : _onLogin,
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: const Text(
-                      'Entrar',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
+                    child: _isLoading
+                        ? const SizedBox(
+                            height: 22,
+                            width: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2.5),
+                          )
+                        : const Text(
+                            'Entrar',
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
                   ),
                 ],
               ),
