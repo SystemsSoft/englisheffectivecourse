@@ -93,7 +93,7 @@ class _GradientHeader extends StatelessWidget {
           colors: [
             Color(0xFF1A2150), // navy escuro
             Color(0xFF2B3A7A), // navy médio
-            Color(0xFF3D4FA0), // azul royal
+            Color(0xFF47569C), // azul royal
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -120,7 +120,6 @@ class _GradientHeader extends StatelessWidget {
               // Barra superior
               Row(
                 children: [
-                  Image.asset('assets/logo.png', height: 36),
                   const Spacer(),
                   IconButton(
                     icon: const Icon(Icons.logout_rounded, color: Colors.white70),
