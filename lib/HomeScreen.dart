@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'viewmodels/user_viewmodel.dart';
 import 'viewmodels/upload_viewmodel.dart';
 import 'LoginScreen.dart';
+import 'VideoPlayerScreen.dart';
 import 'app_theme.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -524,9 +525,18 @@ class _LessonCard extends StatelessWidget {
           Icons.chevron_right_rounded,
           color: AppColors.navyBlue,
         ),
-        onTap: () {
-          // TODO: navegar para player de vídeo
-        },
+        onTap: hasVideo
+            ? () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => VideoPlayerScreen(
+                      title: upload.title ?? '',
+                      videoName: upload.videoName!,
+                    ),
+                  ),
+                );
+              }
+            : null,
       ),
     );
   }
