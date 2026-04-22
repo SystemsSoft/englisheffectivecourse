@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'HomeScreen.dart';
 import 'services/access_service.dart';
 import 'models/access_model.dart';
 import 'models/user_model.dart';
@@ -49,11 +50,9 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           );
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Bem-vindo, ${aluno.name}!')),
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
       );
-
-      // TODO: navegar para a próxima tela
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
