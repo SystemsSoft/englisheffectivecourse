@@ -38,6 +38,7 @@ dependencies:
   provider: ^6.1.5+1
   video_player: ^2.11.1
   chewie: ^1.13.1
+  just_audio: ^0.9.36
 
 dev_dependencies:
   flutter_test:

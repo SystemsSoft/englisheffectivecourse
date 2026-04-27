@@ -5,6 +5,7 @@ import 'viewmodels/user_viewmodel.dart';
 import 'viewmodels/upload_viewmodel.dart';
 import 'LoginScreen.dart';
 import 'VideoPlayerScreen.dart';
+import 'ListeningScreen.dart';
 import 'app_theme.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -50,6 +51,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     // Card turma
                     _ClassCard(user: user, textTheme: textTheme),
+                    const SizedBox(height: 16),
+
+                    // Botão Praticar Listening
+                    _ListeningBanner(),
                     const SizedBox(height: 24),
 
                     // Título seção
@@ -330,7 +335,78 @@ class _InfoTile extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Utilitário: extrai DateTime de um título no formato "Aula dd/MM/yyyy"
+// Banner / botão de acesso ao modo Listening
+// ─────────────────────────────────────────────────────────────────────────────
+class _ListeningBanner extends StatelessWidget {
+  const _ListeningBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const ListeningScreen()),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF1A2150), Color(0xFF3D4FA0)],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x441A2150),
+              blurRadius: 14,
+              offset: Offset(0, 5),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.headphones_rounded,
+                  color: Colors.white, size: 28),
+            ),
+            const SizedBox(width: 16),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Praticar Listening',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
+                  ),
+                  SizedBox(height: 3),
+                  Text(
+                    '6 rádios ao vivo • 6 países • Sotaques variados',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded,
+                color: Colors.white70, size: 26),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 DateTime? _parseLessonDate(String? title) {
   if (title == null) return null;
