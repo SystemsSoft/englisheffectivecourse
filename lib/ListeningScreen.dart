@@ -73,10 +73,10 @@ const _stations = [
   _RadioStation(
     flag: '🇳🇿',
     country: 'Nova Zelândia',
-    name: 'RNZ National',
+    name: 'RNZ National – Radio New Zealand',
     description:
-        'O inglês "Kiwi", similar ao australiano mas com particularidades únicas nas vogais. Programas bem produzidos com conversas pausadas.',
-    url: 'https://stream.rnz.co.nz/national.mp3',
+        'O sotaque "Kiwi" autêntico da rádio pública oficial da Nova Zelândia. Notícias, entrevistas e programas culturais com a pronúncia neozelandesa característica.',
+    url: 'https://radionz.streamguys1.com/national/national/national/national-mainstream/chunks.m3u8',
     accentColor: Color(0xFF4A148C),
   ),
 ];
