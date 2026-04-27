@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_session/audio_session.dart';
@@ -181,7 +182,14 @@ class _ListeningScreenState extends State<ListeningScreen> {
 
     try {
       await _player.stop();
-      await _player.setUrl(_stations[index].url);
+
+      final originalUrl = _stations[index].url;
+      // Adiciona o proxy de CORS apenas na Web
+      final safeUrl = kIsWeb
+          ? 'https://corsproxy.io/?${Uri.encodeComponent(originalUrl)}'
+          : originalUrl;
+
+      await _player.setUrl(safeUrl);
 
       // Configura controles da tela de bloqueio antes de iniciar
       _updateLockScreenControls(index);
