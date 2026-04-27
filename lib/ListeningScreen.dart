@@ -46,10 +46,10 @@ const _stations = [
   _RadioStation(
     flag: '🇨🇦',
     country: 'Canadá',
-    name: 'Newstalk 1010 CFRB – Toronto',
+    name: 'CKNW 980 – News Talk Vancouver',
     description:
-        'Uma das maiores talk radios de Toronto. Inglês canadense com debates, entrevistas e notícias. Pronúncia clara, muito próxima ao inglês americano.',
-    url: 'https://19273.live.streamtheworld.com/CFRBAM.mp3',
+        'Uma das maiores rádios de notícias e debates do Canadá. Inglês canadense autêntico com entrevistas, política e cultura. Transmitido via LeanStream (plataforma oficial canadense).',
+    url: 'https://live.leanstream.co/CKNWAM-MP3',
     accentColor: Color(0xFFB71C1C),
   ),
   _RadioStation(
