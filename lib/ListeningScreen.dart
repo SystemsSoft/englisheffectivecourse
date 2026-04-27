@@ -30,7 +30,7 @@ const _stations = [
     country: 'Estados Unidos',
     name: 'NPR – National Public Radio',
     description:
-        'Inglês americano clássico. Programas de entrevistas, documentários e notícias com fala clara e fluente. Ideal para todos os níveis.',
+        '🎙️ Curiosidade: O sotaque americano padrão (General American) é o mais ensinado no mundo por ser neutro e claro. Repare na pronúncia do "R" forte no final das palavras (ex: "car", "water"). Você encontrará entrevistas, documentários e notícias com fala precisa — ideal para iniciantes e intermediários.',
     url: 'https://npr-ice.streamguys1.com/live.mp3',
     accentColor: Color(0xFF1565C0),
   ),
@@ -39,7 +39,7 @@ const _stations = [
     country: 'Reino Unido',
     name: 'BBC World Service',
     description:
-        'O sotaque britânico mais famoso do mundo. Cobertura global de notícias, debates e cultura. Perfeito para treinar o inglês formal britânico.',
+        '🎙️ Curiosidade: O sotaque britânico RP (Received Pronunciation) é famoso por "engolir" o R no meio das palavras — "car" vira "cah". Também usam vocabulário único: "lift" (elevador), "flat" (apartamento), "lorry" (caminhão). Excelente para treinar inglês formal e expandir vocabulário.',
     url: 'http://stream.live.vc.bbcmedia.co.uk/bbc_world_service',
     accentColor: Color(0xFFC62828),
   ),
@@ -48,7 +48,7 @@ const _stations = [
     country: 'Canadá',
     name: 'CKNW 980 – News Talk Vancouver',
     description:
-        'Uma das maiores rádios de notícias e debates do Canadá. Inglês canadense autêntico com entrevistas, política e cultura. Transmitido via LeanStream (plataforma oficial canadense).',
+        '🎙️ Curiosidade: O canadense tem o fenômeno chamado "Canadian Raising" — as vogais em palavras como "about" e "house" soam diferente do americano, quase como "aboot". Fora isso, misturam vocabulário britânico e americano. Ótimo para distinguir sutilezas do inglês norte-americano.',
     url: 'https://live.leanstream.co/CKNWAM-MP3',
     accentColor: Color(0xFFB71C1C),
   ),
@@ -57,7 +57,7 @@ const _stations = [
     country: 'Austrália',
     name: 'ABC News Radio',
     description:
-        'O sotaque "Aussie" com sua entonação única e vogais características. Ótimo desafio para alunos intermediários e avançados.',
+        '🎙️ Curiosidade: O australiano transforma vogais longas — "today" soa como "to-die", "mate" quase como "mite". Eles também adoram encurtar palavras: "afternoon" vira "arvo", "biscuit" vira "biccy". Um desafio real para o ouvido! Ideal para alunos que querem se preparar para situações do mundo real.',
     url: 'http://live-radio01.mediahubaustralia.com/PBW/mp3/',
     accentColor: Color(0xFF1B5E20),
   ),
@@ -66,7 +66,7 @@ const _stations = [
     country: 'Irlanda',
     name: 'RTÉ Radio 1',
     description:
-        'O rico sotaque irlandês com sua musicalidade própria. Debates sociais, artes e cultura que fogem completamente do padrão americano.',
+        '🎙️ Curiosidade: O irlandês tem uma musicalidade única herdada do gaélico — a entonação sobe e desce diferente de qualquer outro sotaque. Palavras como "film" podem soar como "fillum" e o "th" às vezes vira "t" ou "d". Você encontrará debates culturais, humor e uma riqueza de expressões idiomáticas típicas da ilha.',
     url: 'https://icecast2.rte.ie/radio1',
     accentColor: Color(0xFF2E7D32),
   ),
@@ -75,7 +75,7 @@ const _stations = [
     country: 'Nova Zelândia',
     name: 'RNZ National – Radio New Zealand',
     description:
-        'O sotaque "Kiwi" autêntico da rádio pública oficial da Nova Zelândia. Notícias, entrevistas e programas culturais com a pronúncia neozelandesa característica.',
+        '🎙️ Curiosidade: O sotaque neozelandês (Kiwi) é famoso por transformar a vogal "i" curta em algo parecido com "u" — "fish and chips" soa como "fush and chups". Também é o sotaque mais próximo do britânico fora do Reino Unido. Você encontrará programas sobre cultura Māori, natureza e entrevistas com sotaque autêntico.',
     url: 'https://radionz.streamguys1.com/national/national/national/national-mainstream/chunks.m3u8',
     accentColor: Color(0xFF4A148C),
   ),
