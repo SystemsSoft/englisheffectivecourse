@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 import 'package:just_audio/just_audio.dart';
+import 'package:audio_session/audio_session.dart';
 import 'app_theme.dart';
+import 'services/media_session_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Modelo de Rádio
@@ -99,15 +101,65 @@ class _ListeningScreenState extends State<ListeningScreen> {
   String? _errorMessage;
 
   @override
+  void initState() {
+    super.initState();
+    _initAudioSession();
+  }
+
+  Future<void> _initAudioSession() async {
+    // Configura a sessão de áudio para continuar em segundo plano
+    final session = await AudioSession.instance;
+    await session.configure(const AudioSessionConfiguration(
+      avAudioSessionCategory: AVAudioSessionCategory.playback,
+      avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.defaultToSpeaker,
+      avAudioSessionMode: AVAudioSessionMode.defaultMode,
+      avAudioSessionRouteSharingPolicy:
+          AVAudioSessionRouteSharingPolicy.defaultPolicy,
+      avAudioSessionSetActiveOptions: AVAudioSessionSetActiveOptions.none,
+      androidAudioAttributes: AndroidAudioAttributes(
+        contentType: AndroidAudioContentType.music,
+        flags: AndroidAudioFlags.none,
+        usage: AndroidAudioUsage.media,
+      ),
+      androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
+      androidWillPauseWhenDucked: true,
+    ));
+  }
+
+  @override
   void dispose() {
+    clearMediaSession();
     _player.dispose();
     super.dispose();
+  }
+
+  void _updateLockScreenControls(int index) {
+    final station = _stations[index];
+    updateMediaSession(station.name, station.country);
+
+    // Registra ações de play/pause da tela de bloqueio
+    setMediaActionHandler('play', () {
+      _player.play();
+      setMediaPlaybackState('playing');
+      if (mounted) setState(() {});
+    });
+    setMediaActionHandler('pause', () {
+      _player.pause();
+      setMediaPlaybackState('paused');
+      if (mounted) setState(() {});
+    });
+    setMediaActionHandler('stop', () {
+      _player.stop();
+      clearMediaSession();
+      if (mounted) setState(() { _playingIndex = null; });
+    });
   }
 
   Future<void> _toggle(int index) async {
     // Se já está tocando a mesma estação → pausa
     if (_playingIndex == index && _player.playing) {
       await _player.pause();
+      setMediaPlaybackState('paused');
       setState(() {});
       return;
     }
@@ -115,6 +167,7 @@ class _ListeningScreenState extends State<ListeningScreen> {
     // Se retomando a mesma estação já carregada → play
     if (_playingIndex == index && !_player.playing) {
       await _player.play();
+      setMediaPlaybackState('playing');
       setState(() {});
       return;
     }
@@ -130,6 +183,9 @@ class _ListeningScreenState extends State<ListeningScreen> {
       await _player.stop();
       await _player.setUrl(_stations[index].url);
 
+      // Configura controles da tela de bloqueio antes de iniciar
+      _updateLockScreenControls(index);
+
       // Inicia o play sem aguardar — deixa o stream monitorar
       _player.play().catchError((e) {
         if (mounted) {
@@ -138,6 +194,7 @@ class _ListeningScreenState extends State<ListeningScreen> {
             _errorMessage = 'Não foi possível conectar à rádio. Verifique a internet.';
             _playingIndex = null;
           });
+          clearMediaSession();
         }
       });
 
@@ -146,7 +203,10 @@ class _ListeningScreenState extends State<ListeningScreen> {
           .firstWhere((s) => s.playing)
           .timeout(const Duration(seconds: 25))
           .then((_) {
-            if (mounted) setState(() => _isLoading = false);
+            if (mounted) {
+              setState(() => _isLoading = false);
+              setMediaPlaybackState('playing');
+            }
           })
           .catchError((_) {
             // Timeout ou erro: esconde o loading mas mantém o player tentando
@@ -159,6 +219,7 @@ class _ListeningScreenState extends State<ListeningScreen> {
           _errorMessage = 'Não foi possível conectar à rádio. Verifique a internet.';
           _playingIndex = null;
         });
+        clearMediaSession();
       }
     }
   }
