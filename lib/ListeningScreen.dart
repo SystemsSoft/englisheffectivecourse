@@ -43,7 +43,7 @@ const _stations = [
     name: 'BBC World Service',
     description:
         '🎙️ Curiosidade: O sotaque britânico RP (Received Pronunciation) é famoso por "engolir" o R no meio das palavras — "car" vira "cah". Também usam vocabulário único: "lift" (elevador), "flat" (apartamento), "lorry" (caminhão). Excelente para treinar inglês formal e expandir vocabulário.',
-    url: 'http://stream.live.vc.bbcmedia.co.uk/bbc_world_service',
+    url: 'https://stream.live.vc.bbcmedia.co.uk/bbc_world_service',
     accentColor: Color(0xFFC62828),
   ),
   _RadioStation(
@@ -61,7 +61,7 @@ const _stations = [
     name: 'ABC News Radio',
     description:
         '🎙️ Curiosidade: O australiano transforma vogais longas — "today" soa como "to-die", "mate" quase como "mite". Eles também adoram encurtar palavras: "afternoon" vira "arvo", "biscuit" vira "biccy". Um desafio real para o ouvido! Ideal para alunos que querem se preparar para situações do mundo real.',
-    url: 'http://live-radio01.mediahubaustralia.com/PBW/mp3/',
+    url: 'https://live-radio01.mediahubaustralia.com/PBW/mp3/',
     accentColor: Color(0xFF1B5E20),
   ),
   _RadioStation(
