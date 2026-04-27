@@ -50,13 +50,18 @@ class RadioPlayer {
   Future<void> play() async {
     if (_el == null) return;
     try {
+      _playing = true;
+      _playingController.add(true);
       await _el!.play();
     } catch (_) {
-      // Ignora erros de reprodução (ex.: autoplay policy)
+      _playing = false;
+      _playingController.add(false);
     }
   }
 
   Future<void> pause() async {
+    _playing = false;
+    _playingController.add(false);
     _el?.pause();
   }
 
