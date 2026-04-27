@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart';
 import 'dart:async';
-import 'package:just_audio/just_audio.dart';
 import 'package:audio_session/audio_session.dart';
 import 'app_theme.dart';
 import 'services/media_session_service.dart';
+import 'services/radio_player.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Modelo de Rádio
@@ -96,7 +95,7 @@ class ListeningScreen extends StatefulWidget {
 }
 
 class _ListeningScreenState extends State<ListeningScreen> {
-  final AudioPlayer _player = AudioPlayer();
+  final RadioPlayer _player = RadioPlayer();
   int? _playingIndex;
   bool _isLoading = false;
   String? _errorMessage;
@@ -183,13 +182,7 @@ class _ListeningScreenState extends State<ListeningScreen> {
     try {
       await _player.stop();
 
-      final originalUrl = _stations[index].url;
-      // Adiciona o proxy de CORS apenas na Web
-      final safeUrl = kIsWeb
-          ? 'https://corsproxy.io/?${Uri.encodeComponent(originalUrl)}'
-          : originalUrl;
-
-      await _player.setUrl(safeUrl);
+      await _player.setUrl(_stations[index].url);
 
       // Configura controles da tela de bloqueio antes de iniciar
       _updateLockScreenControls(index);
@@ -207,8 +200,8 @@ class _ListeningScreenState extends State<ListeningScreen> {
       });
 
       // Remove o loading SOMENTE quando o player confirmar que está tocando
-      _player.playerStateStream
-          .firstWhere((s) => s.playing)
+      _player.playingStream
+          .firstWhere((playing) => playing)
           .timeout(const Duration(seconds: 25))
           .then((_) {
             if (mounted) {
@@ -427,10 +420,10 @@ class _ListeningScreenState extends State<ListeningScreen> {
                   child: CircularProgressIndicator(
                       strokeWidth: 2, color: Colors.white),
                 )
-              : StreamBuilder<PlayerState>(
-                  stream: _player.playerStateStream,
+              : StreamBuilder<bool>(
+                  stream: _player.playingStream,
                   builder: (context, snap) {
-                    final playing = snap.data?.playing ?? false;
+                    final playing = snap.data ?? _player.playing;
                     return IconButton(
                       icon: Icon(
                         playing
