@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:async';
 import 'package:just_audio/just_audio.dart';
 import 'app_theme.dart';
 
@@ -128,14 +129,37 @@ class _ListeningScreenState extends State<ListeningScreen> {
     try {
       await _player.stop();
       await _player.setUrl(_stations[index].url);
-      await _player.play();
-      setState(() => _isLoading = false);
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _errorMessage = 'Não foi possível conectar à rádio. Verifique a internet.';
-        _playingIndex = null;
+
+      // Inicia o play sem aguardar — deixa o stream monitorar
+      _player.play().catchError((e) {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = 'Não foi possível conectar à rádio. Verifique a internet.';
+            _playingIndex = null;
+          });
+        }
       });
+
+      // Remove o loading SOMENTE quando o player confirmar que está tocando
+      _player.playerStateStream
+          .firstWhere((s) => s.playing)
+          .timeout(const Duration(seconds: 25))
+          .then((_) {
+            if (mounted) setState(() => _isLoading = false);
+          })
+          .catchError((_) {
+            // Timeout ou erro: esconde o loading mas mantém o player tentando
+            if (mounted) setState(() => _isLoading = false);
+          });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Não foi possível conectar à rádio. Verifique a internet.';
+          _playingIndex = null;
+        });
+      }
     }
   }
 
