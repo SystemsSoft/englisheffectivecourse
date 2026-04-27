@@ -330,6 +330,20 @@ class _InfoTile extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Utilitário: extrai DateTime de um título no formato "Aula dd/MM/yyyy"
+// ─────────────────────────────────────────────────────────────────────────────
+DateTime? _parseLessonDate(String? title) {
+  if (title == null) return null;
+  final match = RegExp(r'(\d{2})/(\d{2})/(\d{4})').firstMatch(title);
+  if (match == null) return null;
+  final day = int.tryParse(match.group(1)!);
+  final month = int.tryParse(match.group(2)!);
+  final year = int.tryParse(match.group(3)!);
+  if (day == null || month == null || year == null) return null;
+  return DateTime(year, month, day);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Seção de aulas (loading / erro / vazia / lista)
 // ─────────────────────────────────────────────────────────────────────────────
 class _LessonsSection extends StatelessWidget {
@@ -369,8 +383,19 @@ class _LessonsSection extends StatelessWidget {
             textTheme: textTheme,
           );
         }
+
+        // Ordena da aula mais recente para a mais antiga pelo título
+        final sortedUploads = [...vm.uploads]..sort((a, b) {
+            final dateA = _parseLessonDate(a.title as String?);
+            final dateB = _parseLessonDate(b.title as String?);
+            if (dateA == null && dateB == null) return 0;
+            if (dateA == null) return 1;
+            if (dateB == null) return -1;
+            return dateB.compareTo(dateA); // mais recente primeiro
+          });
+
         return Column(
-          children: vm.uploads
+          children: sortedUploads
               .map((upload) => _LessonCard(upload: upload, textTheme: textTheme))
               .toList(),
         );
