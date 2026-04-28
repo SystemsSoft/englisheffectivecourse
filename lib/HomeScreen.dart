@@ -7,6 +7,7 @@ import 'LoginScreen.dart';
 import 'VideoPlayerScreen.dart';
 import 'ListeningScreen.dart';
 import 'WordOfTheDayScreen.dart';
+import 'DictionaryScreen.dart';
 import 'app_theme.dart';
 
 
@@ -61,6 +62,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
                     // Word of the Day
                     _WordOfTheDayBanner(),
+                    const SizedBox(height: 12),
+
+                    // Dictionary
+                    _DictionaryBanner(),
                     const SizedBox(height: 24),
 
                     // Título seção
@@ -476,6 +481,74 @@ class _WordOfTheDayBanner extends StatelessWidget {
             ),
             const Icon(Icons.chevron_right_rounded,
                 color: Colors.white70, size: 26),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Banner Dictionary
+// ─────────────────────────────────────────────────────────────────────────────
+class _DictionaryBanner extends StatelessWidget {
+  const _DictionaryBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const DictionaryScreen()),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF2E7D32), Color(0xFF43A047)],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x442E7D32),
+              blurRadius: 14,
+              offset: Offset(0, 5),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.menu_book_rounded, color: Colors.white, size: 28),
+            ),
+            const SizedBox(width: 16),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Dictionary',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
+                  ),
+                  SizedBox(height: 3),
+                  Text(
+                    'Search any English word instantly',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: Colors.white70, size: 26),
           ],
         ),
       ),
