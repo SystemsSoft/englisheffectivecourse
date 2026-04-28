@@ -2,7 +2,11 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'models/flashcard_model.dart';
+import 'services/flashcard_service.dart';
+import 'viewmodels/user_viewmodel.dart';
 import 'app_theme.dart';
 
 // ─── Banco de flashcards fixos (iniciante) ────────────────────────────────────
@@ -42,6 +46,7 @@ const _builtinCards = [
 const _kCustomCardsKey = 'custom_flashcards';
 
 class _CardData {
+  final String? remoteId; // id do backend (null = ainda não sincronizado)
   final String word;
   final String type;
   final String definition;
@@ -49,9 +54,10 @@ class _CardData {
   final bool isCustom;
 
   const _CardData(this.word, this.type, this.definition, this.example,
-      {this.isCustom = false});
+      {this.isCustom = false, this.remoteId});
 
   Map<String, dynamic> toJson() => {
+        'remoteId': remoteId,
         'word': word,
         'type': type,
         'definition': definition,
@@ -64,17 +70,29 @@ class _CardData {
         j['definition'] as String,
         j['example'] as String? ?? '',
         isCustom: true,
+        remoteId: j['remoteId'] as String?,
+      );
+
+  factory _CardData.fromDto(FlashcardDto dto) => _CardData(
+        dto.word,
+        dto.type,
+        dto.definition,
+        dto.example,
+        isCustom: true,
+        remoteId: dto.id,
       );
 }
 
-// ─── Persistência ─────────────────────────────────────────────────────────────
-Future<List<_CardData>> _loadCustomCards() async {
+// ─── Cache local (fallback offline) ──────────────────────────────────────────
+Future<List<_CardData>> _loadCachedCards() async {
   final prefs = await SharedPreferences.getInstance();
   final raw = prefs.getStringList(_kCustomCardsKey) ?? [];
-  return raw.map((s) => _CardData.fromJson(jsonDecode(s) as Map<String, dynamic>)).toList();
+  return raw
+      .map((s) => _CardData.fromJson(jsonDecode(s) as Map<String, dynamic>))
+      .toList();
 }
 
-Future<void> _saveCustomCards(List<_CardData> cards) async {
+Future<void> _cacheCards(List<_CardData> cards) async {
   final prefs = await SharedPreferences.getInstance();
   await prefs.setStringList(
     _kCustomCardsKey,
@@ -92,6 +110,8 @@ class FlashcardsScreen extends StatefulWidget {
 
 class _FlashcardsScreenState extends State<FlashcardsScreen>
     with SingleTickerProviderStateMixin {
+  final _service = FlashcardService();
+
   List<_CardData> _customCards = [];
   List<_CardData> _deck = [];
   int _index = 0;
@@ -101,6 +121,7 @@ class _FlashcardsScreenState extends State<FlashcardsScreen>
   int _dontKnow = 0;
   bool _finished = false;
   bool _loaded = false;
+  String? _loadError;
 
   // 0 = Play, 1 = My Cards
   int _tab = 0;
@@ -118,16 +139,49 @@ class _FlashcardsScreenState extends State<FlashcardsScreen>
     _flipAnim = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _flipCtrl, curve: Curves.easeInOut),
     );
-    _loadCards();
+    // Carrega após o primeiro frame para ter acesso ao context/provider
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadCards());
   }
 
   Future<void> _loadCards() async {
-    final custom = await _loadCustomCards();
-    setState(() {
-      _customCards = custom;
-      _loaded = true;
-      _buildDeck();
-    });
+    final user = context.read<UserViewModel>().user;
+    if (user == null) {
+      // Sem usuário logado — usa somente cache local
+      final cached = await _loadCachedCards();
+      if (!mounted) return;
+      setState(() {
+        _customCards = cached;
+        _loaded = true;
+        _buildDeck();
+      });
+      return;
+    }
+
+    try {
+      final dtos = await _service.fetchAll(
+        studentName: user.name,
+        className: user.className,
+      );
+      final cards = dtos.map(_CardData.fromDto).toList();
+      await _cacheCards(cards); // Atualiza cache local
+      if (!mounted) return;
+      setState(() {
+        _customCards = cards;
+        _loadError = null;
+        _loaded = true;
+        _buildDeck();
+      });
+    } catch (_) {
+      // Fallback offline
+      final cached = await _loadCachedCards();
+      if (!mounted) return;
+      setState(() {
+        _customCards = cached;
+        _loadError = 'Offline — showing cached cards.';
+        _loaded = true;
+        _buildDeck();
+      });
+    }
   }
 
   void _buildDeck() {
@@ -181,8 +235,27 @@ class _FlashcardsScreenState extends State<FlashcardsScreen>
   }
 
   Future<void> _addCard(_CardData card) async {
-    final updated = [..._customCards, card];
-    await _saveCustomCards(updated);
+    final user = context.read<UserViewModel>().user;
+
+    _CardData saved = card;
+    if (user != null) {
+      try {
+        final dto = await _service.create(FlashcardDto(
+          studentName: user.name,
+          className: user.className,
+          word: card.word,
+          type: card.type,
+          definition: card.definition,
+          example: card.example,
+        ));
+        saved = _CardData.fromDto(dto);
+      } catch (_) {
+        // Salva localmente mesmo offline
+      }
+    }
+
+    final updated = [..._customCards, saved];
+    await _cacheCards(updated);
     setState(() {
       _customCards = updated;
       _buildDeck();
@@ -190,8 +263,30 @@ class _FlashcardsScreenState extends State<FlashcardsScreen>
   }
 
   Future<void> _deleteCard(int index) async {
+    final card = _customCards[index];
+    final user = context.read<UserViewModel>().user;
+
+    if (user != null && card.remoteId != null) {
+      try {
+        await _service.delete(
+          card.remoteId!,
+          studentName: user.name,
+          className: user.className,
+        );
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Erro ao remover no servidor. Removido localmente.'),
+              backgroundColor: AppColors.red,
+            ),
+          );
+        }
+      }
+    }
+
     final updated = [..._customCards]..removeAt(index);
-    await _saveCustomCards(updated);
+    await _cacheCards(updated);
     setState(() {
       _customCards = updated;
       _buildDeck();
@@ -421,27 +516,55 @@ class _FlashcardsScreenState extends State<FlashcardsScreen>
             Expanded(
               child: !_loaded
                   ? const Center(child: CircularProgressIndicator(color: AppColors.navyBlue))
-                  : _tab == 1
-                      ? _MyCardsTab(
-                          customCards: _customCards,
-                          onDelete: _deleteCard,
-                          onAdd: _showAddDialog,
-                          textTheme: textTheme,
-                        )
-                      : _PlayTab(
-                          deck: _deck,
-                          index: _index,
-                          flipped: _flipped,
-                          flipping: _flipping,
-                          finished: _finished,
-                          know: _know,
-                          dontKnow: _dontKnow,
-                          flipAnim: _flipAnim,
-                          onFlip: _flip,
-                          onAnswer: _answer,
-                          onRestart: _restart,
-                          textTheme: textTheme,
+                  : Column(
+                      children: [
+                        // Banner offline
+                        if (_loadError != null)
+                          Container(
+                            width: double.infinity,
+                            color: const Color(0xFFFFF3E0),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.wifi_off_rounded, color: Color(0xFFF57C00), size: 16),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(_loadError!,
+                                    style: const TextStyle(color: Color(0xFFF57C00), fontSize: 12)),
+                                ),
+                                GestureDetector(
+                                  onTap: () => setState(() { _loaded = false; _loadError = null; _loadCards(); }),
+                                  child: const Text('Retry', style: TextStyle(
+                                    color: Color(0xFFF57C00), fontWeight: FontWeight.bold, fontSize: 12)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        Expanded(
+                          child: _tab == 1
+                              ? _MyCardsTab(
+                                  customCards: _customCards,
+                                  onDelete: _deleteCard,
+                                  onAdd: _showAddDialog,
+                                  textTheme: textTheme,
+                                )
+                              : _PlayTab(
+                                  deck: _deck,
+                                  index: _index,
+                                  flipped: _flipped,
+                                  flipping: _flipping,
+                                  finished: _finished,
+                                  know: _know,
+                                  dontKnow: _dontKnow,
+                                  flipAnim: _flipAnim,
+                                  onFlip: _flip,
+                                  onAnswer: _answer,
+                                  onRestart: _restart,
+                                  textTheme: textTheme,
+                                ),
                         ),
+                      ],
+                    ),
             ),
           ],
         ),
