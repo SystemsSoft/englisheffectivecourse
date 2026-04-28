@@ -6,7 +6,9 @@ import 'viewmodels/upload_viewmodel.dart';
 import 'LoginScreen.dart';
 import 'VideoPlayerScreen.dart';
 import 'ListeningScreen.dart';
+import 'WordOfTheDayScreen.dart';
 import 'app_theme.dart';
+
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -55,6 +57,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
                     // Botão Praticar Listening
                     _ListeningBanner(),
+                    const SizedBox(height: 12),
+
+                    // Word of the Day
+                    _WordOfTheDayBanner(),
                     const SizedBox(height: 24),
 
                     // Título seção
@@ -394,6 +400,76 @@ class _ListeningBanner extends StatelessWidget {
                       color: Colors.white70,
                       fontSize: 12,
                     ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded,
+                color: Colors.white70, size: 26),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Banner Word of the Day
+// ─────────────────────────────────────────────────────────────────────────────
+class _WordOfTheDayBanner extends StatelessWidget {
+  const _WordOfTheDayBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const WordOfTheDayScreen()),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFFC8102E), Color(0xFFE8394D)],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x44C8102E),
+              blurRadius: 14,
+              offset: Offset(0, 5),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.auto_stories_rounded,
+                  color: Colors.white, size: 28),
+            ),
+            const SizedBox(width: 16),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Word of the Day',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
+                  ),
+                  SizedBox(height: 3),
+                  Text(
+                    'Learn a new English word every day',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
                   ),
                 ],
               ),
