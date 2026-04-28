@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'HomeScreen.dart';
 import 'services/access_service.dart';
 import 'models/access_model.dart';
@@ -294,6 +295,71 @@ class _LoginScreenState extends State<LoginScreen> {
                                 label: 'Entrar',
                                 onPressed: _onLogin,
                               ),
+                        const SizedBox(height: 20),
+                        const Divider(color: Color(0xFFE8EAF6)),
+                        const SizedBox(height: 12),
+                        // Suporte via WhatsApp
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Text(
+                              'Precisa de ajuda?',
+                              style: TextStyle(
+                                color: Color(0xFF767AA8),
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            InkWell(
+                              onTap: () async {
+                                final uri = Uri.parse(
+                                  'https://wa.me/5524992062668',
+                                );
+                                if (await canLaunchUrl(uri)) {
+                                  await launchUrl(
+                                    uri,
+                                    mode: LaunchMode.externalApplication,
+                                  );
+                                }
+                              },
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE8F5E9),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Image.network(
+                                      'https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg',
+                                      height: 18,
+                                      width: 18,
+                                      errorBuilder: (_, __, ___) => const Icon(
+                                        Icons.chat,
+                                        color: Color(0xFF25D366),
+                                        size: 18,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    const Text(
+                                      'Suporte WhatsApp',
+                                      style: TextStyle(
+                                        color: Color(0xFF1B5E20),
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ),
