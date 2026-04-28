@@ -8,6 +8,7 @@ import 'VideoPlayerScreen.dart';
 import 'ListeningScreen.dart';
 import 'WordOfTheDayScreen.dart';
 import 'DictionaryScreen.dart';
+import 'FlashcardsScreen.dart';
 import 'app_theme.dart';
 
 
@@ -66,6 +67,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
                     // Dictionary
                     _DictionaryBanner(),
+                    const SizedBox(height: 12),
+
+                    // Flashcards
+                    _FlashcardsBanner(),
                     const SizedBox(height: 24),
 
                     // Título seção
@@ -543,6 +548,74 @@ class _DictionaryBanner extends StatelessWidget {
                   SizedBox(height: 3),
                   Text(
                     'Search any English word instantly',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: Colors.white70, size: 26),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Banner Flashcards
+// ─────────────────────────────────────────────────────────────────────────────
+class _FlashcardsBanner extends StatelessWidget {
+  const _FlashcardsBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const FlashcardsScreen()),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF6A1B9A), Color(0xFF9C27B0)],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x446A1B9A),
+              blurRadius: 14,
+              offset: Offset(0, 5),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.style_rounded, color: Colors.white, size: 28),
+            ),
+            const SizedBox(width: 16),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Flashcards',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
+                  ),
+                  SizedBox(height: 3),
+                  Text(
+                    '30 words • Flip & learn • Track progress',
                     style: TextStyle(color: Colors.white70, fontSize: 12),
                   ),
                 ],
