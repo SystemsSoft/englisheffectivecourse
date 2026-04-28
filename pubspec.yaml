@@ -40,6 +40,7 @@ dependencies:
   chewie: ^1.13.1
   just_audio: ^0.9.36
   url_launcher: ^6.3.1
+  shared_preferences: ^2.3.2
 
 dev_dependencies:
   flutter_test:

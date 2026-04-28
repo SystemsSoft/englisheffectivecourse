@@ -1,10 +1,12 @@
+import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'app_theme.dart';
 
-// ─── Banco de flashcards ──────────────────────────────────────────────────────
-const _allCards = [
+// ─── Banco de flashcards fixos (iniciante) ────────────────────────────────────
+const _builtinCards = [
   _CardData('Hello',         'interj.', 'A greeting used when meeting someone.',                   'Hello! How are you today?'),
   _CardData('Goodbye',       'interj.', 'What you say when leaving someone.',                      'Goodbye! See you tomorrow.'),
   _CardData('Please',        'adv.',    'Used to make a request polite.',                          'Can I have some water, please?'),
@@ -37,12 +39,47 @@ const _allCards = [
   _CardData('Every day',     'phrase',  'On each day without missing.',                            'Practice a little every day and you will improve.'),
 ];
 
+const _kCustomCardsKey = 'custom_flashcards';
+
 class _CardData {
   final String word;
   final String type;
   final String definition;
   final String example;
-  const _CardData(this.word, this.type, this.definition, this.example);
+  final bool isCustom;
+
+  const _CardData(this.word, this.type, this.definition, this.example,
+      {this.isCustom = false});
+
+  Map<String, dynamic> toJson() => {
+        'word': word,
+        'type': type,
+        'definition': definition,
+        'example': example,
+      };
+
+  factory _CardData.fromJson(Map<String, dynamic> j) => _CardData(
+        j['word'] as String,
+        j['type'] as String,
+        j['definition'] as String,
+        j['example'] as String? ?? '',
+        isCustom: true,
+      );
+}
+
+// ─── Persistência ─────────────────────────────────────────────────────────────
+Future<List<_CardData>> _loadCustomCards() async {
+  final prefs = await SharedPreferences.getInstance();
+  final raw = prefs.getStringList(_kCustomCardsKey) ?? [];
+  return raw.map((s) => _CardData.fromJson(jsonDecode(s) as Map<String, dynamic>)).toList();
+}
+
+Future<void> _saveCustomCards(List<_CardData> cards) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setStringList(
+    _kCustomCardsKey,
+    cards.map((c) => jsonEncode(c.toJson())).toList(),
+  );
 }
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -55,13 +92,18 @@ class FlashcardsScreen extends StatefulWidget {
 
 class _FlashcardsScreenState extends State<FlashcardsScreen>
     with SingleTickerProviderStateMixin {
-  late List<_CardData> _deck;
+  List<_CardData> _customCards = [];
+  List<_CardData> _deck = [];
   int _index = 0;
   bool _flipped = false;
   bool _flipping = false;
   int _know = 0;
   int _dontKnow = 0;
   bool _finished = false;
+  bool _loaded = false;
+
+  // 0 = Play, 1 = My Cards
+  int _tab = 0;
 
   late AnimationController _flipCtrl;
   late Animation<double> _flipAnim;
@@ -69,7 +111,6 @@ class _FlashcardsScreenState extends State<FlashcardsScreen>
   @override
   void initState() {
     super.initState();
-    _deck = List.from(_allCards)..shuffle(Random());
     _flipCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 380),
@@ -77,6 +118,26 @@ class _FlashcardsScreenState extends State<FlashcardsScreen>
     _flipAnim = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _flipCtrl, curve: Curves.easeInOut),
     );
+    _loadCards();
+  }
+
+  Future<void> _loadCards() async {
+    final custom = await _loadCustomCards();
+    setState(() {
+      _customCards = custom;
+      _loaded = true;
+      _buildDeck();
+    });
+  }
+
+  void _buildDeck() {
+    _deck = [..._builtinCards, ..._customCards]..shuffle(Random());
+    _index = 0;
+    _flipped = false;
+    _know = 0;
+    _dontKnow = 0;
+    _finished = false;
+    _flipCtrl.reset();
   }
 
   @override
@@ -99,10 +160,7 @@ class _FlashcardsScreenState extends State<FlashcardsScreen>
 
   void _answer(bool knew) async {
     if (_flipping) return;
-    setState(() {
-      if (knew) _know++; else _dontKnow++;
-    });
-    // Volta o card para frente antes de avançar
+    setState(() { if (knew) _know++; else _dontKnow++; });
     if (_flipped) {
       _flipping = true;
       await _flipCtrl.reverse();
@@ -119,15 +177,130 @@ class _FlashcardsScreenState extends State<FlashcardsScreen>
   }
 
   void _restart() {
+    setState(() => _buildDeck());
+  }
+
+  Future<void> _addCard(_CardData card) async {
+    final updated = [..._customCards, card];
+    await _saveCustomCards(updated);
     setState(() {
-      _deck.shuffle(Random());
-      _index = 0;
-      _flipped = false;
-      _know = 0;
-      _dontKnow = 0;
-      _finished = false;
-      _flipCtrl.reset();
+      _customCards = updated;
+      _buildDeck();
     });
+  }
+
+  Future<void> _deleteCard(int index) async {
+    final updated = [..._customCards]..removeAt(index);
+    await _saveCustomCards(updated);
+    setState(() {
+      _customCards = updated;
+      _buildDeck();
+    });
+  }
+
+  void _showAddDialog() {
+    final wordCtrl = TextEditingController();
+    final typeCtrl = TextEditingController();
+    final defCtrl = TextEditingController();
+    final exCtrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Handle
+                Center(
+                  child: Container(
+                    width: 40, height: 4,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE0E0E0),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Container(width: 4, height: 20,
+                      decoration: BoxDecoration(color: AppColors.red, borderRadius: BorderRadius.circular(2))),
+                    const SizedBox(width: 10),
+                    Text('New Flashcard',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold, color: AppColors.navyBlue)),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                // Word
+                _FormField(controller: wordCtrl, label: 'Word *', hint: 'e.g. Brave',
+                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null),
+                const SizedBox(height: 12),
+                // Type
+                _FormField(controller: typeCtrl, label: 'Type', hint: 'e.g. adj., noun, verb'),
+                const SizedBox(height: 12),
+                // Definition
+                _FormField(controller: defCtrl, label: 'Definition *', hint: 'e.g. Having courage...',
+                  maxLines: 2,
+                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null),
+                const SizedBox(height: 12),
+                // Example
+                _FormField(controller: exCtrl, label: 'Example sentence', hint: 'e.g. She was brave enough to speak.'),
+                const SizedBox(height: 24),
+                // Botão salvar
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF1A2150), Color(0xFF3D4FA0)],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      if (!formKey.currentState!.validate()) return;
+                      Navigator.pop(context);
+                      _addCard(_CardData(
+                        wordCtrl.text.trim(),
+                        typeCtrl.text.trim().isEmpty ? 'word' : typeCtrl.text.trim(),
+                        defCtrl.text.trim(),
+                        exCtrl.text.trim(),
+                        isCustom: true,
+                      ));
+                    },
+                    icon: const Icon(Icons.add_rounded, color: Colors.white),
+                    label: const Text('Save Card',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -141,7 +314,7 @@ class _FlashcardsScreenState extends State<FlashcardsScreen>
         backgroundColor: const Color(0xFFF4F6FB),
         body: Column(
           children: [
-            // ── Header ──────────────────────────────────────────────────
+            // ── Header ────────────────────────────────────────────────
             Container(
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
@@ -158,7 +331,7 @@ class _FlashcardsScreenState extends State<FlashcardsScreen>
               child: SafeArea(
                 bottom: false,
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 4, 24, 24),
+                  padding: const EdgeInsets.fromLTRB(8, 4, 8, 16),
                   child: Column(
                     children: [
                       Row(
@@ -168,11 +341,15 @@ class _FlashcardsScreenState extends State<FlashcardsScreen>
                             onPressed: () => Navigator.of(context).pop(),
                           ),
                           Expanded(
-                            child: Text(
-                              'Flashcards',
+                            child: Text('Flashcards',
                               style: textTheme.titleLarge?.copyWith(
-                                color: Colors.white, fontWeight: FontWeight.bold),
-                            ),
+                                color: Colors.white, fontWeight: FontWeight.bold)),
+                          ),
+                          // Botão adicionar card
+                          IconButton(
+                            icon: const Icon(Icons.add_circle_outline_rounded, color: Colors.white),
+                            tooltip: 'Add card',
+                            onPressed: _showAddDialog,
                           ),
                           IconButton(
                             icon: const Icon(Icons.shuffle_rounded, color: Colors.white70),
@@ -181,33 +358,49 @@ class _FlashcardsScreenState extends State<FlashcardsScreen>
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      // Barra de progresso
-                      if (!_finished) ...[
-                        Row(
+                      const SizedBox(height: 8),
+                      // Tabs
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(
                           children: [
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: LinearProgressIndicator(
-                                  value: _index / total,
-                                  backgroundColor: Colors.white24,
-                                  color: Colors.white,
-                                  minHeight: 6,
-                                ),
-                              ),
+                            _TabButton(label: 'Play', icon: Icons.play_arrow_rounded,
+                              selected: _tab == 0, onTap: () => setState(() => _tab = 0)),
+                            const SizedBox(width: 10),
+                            _TabButton(
+                              label: 'My Cards (${_customCards.length})',
+                              icon: Icons.bookmarks_rounded,
+                              selected: _tab == 1,
+                              onTap: () => setState(() => _tab = 1),
                             ),
-                            const SizedBox(width: 12),
-                            Text(
-                              '$_index / $total',
-                              style: textTheme.labelSmall?.copyWith(color: Colors.white70),
-                            ),
-                            const SizedBox(width: 16),
                           ],
                         ),
-                        const SizedBox(height: 10),
-                        // Placar
+                      ),
+                      const SizedBox(height: 8),
+                      // Barra de progresso (só no tab Play)
+                      if (_tab == 0 && !_finished && _loaded) ...[
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: LinearProgressIndicator(
+                                    value: total == 0 ? 0 : _index / total,
+                                    backgroundColor: Colors.white24,
+                                    color: Colors.white,
+                                    minHeight: 6,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Text('$_index / $total',
+                                style: textTheme.labelSmall?.copyWith(color: Colors.white70)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -216,6 +409,7 @@ class _FlashcardsScreenState extends State<FlashcardsScreen>
                             _ScorePill(icon: Icons.close_rounded, color: AppColors.red, count: _dontKnow, label: 'Not yet'),
                           ],
                         ),
+                        const SizedBox(height: 4),
                       ],
                     ],
                   ),
@@ -223,83 +417,376 @@ class _FlashcardsScreenState extends State<FlashcardsScreen>
               ),
             ),
 
-            // ── Body ────────────────────────────────────────────────────
+            // ── Body ──────────────────────────────────────────────────
             Expanded(
-              child: _finished
-                  ? _ResultView(
-                      know: _know,
-                      dontKnow: _dontKnow,
-                      total: total,
-                      onRestart: _restart,
-                      textTheme: textTheme,
-                    )
-                  : Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        // Dica de toque
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: Text(
-                            'Tap the card to reveal the answer',
-                            style: textTheme.bodySmall?.copyWith(color: const Color(0xFF9EA3C8)),
-                          ),
+              child: !_loaded
+                  ? const Center(child: CircularProgressIndicator(color: AppColors.navyBlue))
+                  : _tab == 1
+                      ? _MyCardsTab(
+                          customCards: _customCards,
+                          onDelete: _deleteCard,
+                          onAdd: _showAddDialog,
+                          textTheme: textTheme,
+                        )
+                      : _PlayTab(
+                          deck: _deck,
+                          index: _index,
+                          flipped: _flipped,
+                          flipping: _flipping,
+                          finished: _finished,
+                          know: _know,
+                          dontKnow: _dontKnow,
+                          flipAnim: _flipAnim,
+                          onFlip: _flip,
+                          onAnswer: _answer,
+                          onRestart: _restart,
+                          textTheme: textTheme,
                         ),
-
-                        // Card com flip 3D
-                        GestureDetector(
-                          onTap: _flip,
-                          child: AnimatedBuilder(
-                            animation: _flipAnim,
-                            builder: (_, __) {
-                              final angle = _flipAnim.value * pi;
-                              final showBack = angle > pi / 2;
-                              return Transform(
-                                alignment: Alignment.center,
-                                transform: Matrix4.identity()
-                                  ..setEntry(3, 2, 0.001)
-                                  ..rotateY(angle),
-                                child: showBack
-                                    ? Transform(
-                                        alignment: Alignment.center,
-                                        transform: Matrix4.identity()..rotateY(pi),
-                                        child: _CardBack(card: _deck[_index], textTheme: textTheme),
-                                      )
-                                    : _CardFront(card: _deck[_index], textTheme: textTheme),
-                              );
-                            },
-                          ),
-                        ),
-
-                        const SizedBox(height: 28),
-
-                        // Botões Sei / Não sei (só aparecem depois de virar)
-                        AnimatedOpacity(
-                          opacity: _flipped ? 1.0 : 0.0,
-                          duration: const Duration(milliseconds: 250),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              _AnswerButton(
-                                label: "Don't know",
-                                icon: Icons.close_rounded,
-                                color: AppColors.red,
-                                onTap: _flipped ? () => _answer(false) : null,
-                              ),
-                              const SizedBox(width: 20),
-                              _AnswerButton(
-                                label: 'I know it!',
-                                icon: Icons.check_rounded,
-                                color: const Color(0xFF43A047),
-                                onTap: _flipped ? () => _answer(true) : null,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ─── Tab Button ───────────────────────────────────────────────────────────────
+class _TabButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _TabButton({required this.label, required this.icon, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected ? Colors.white : Colors.white.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: selected ? AppColors.navyBlue : Colors.white70),
+            const SizedBox(width: 6),
+            Text(label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: selected ? AppColors.navyBlue : Colors.white70,
+              )),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Play Tab ─────────────────────────────────────────────────────────────────
+class _PlayTab extends StatelessWidget {
+  final List<_CardData> deck;
+  final int index;
+  final bool flipped, flipping, finished;
+  final int know, dontKnow;
+  final Animation<double> flipAnim;
+  final VoidCallback onFlip, onRestart;
+  final void Function(bool) onAnswer;
+  final TextTheme textTheme;
+
+  const _PlayTab({
+    required this.deck, required this.index, required this.flipped,
+    required this.flipping, required this.finished, required this.know,
+    required this.dontKnow, required this.flipAnim, required this.onFlip,
+    required this.onRestart, required this.onAnswer, required this.textTheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (deck.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.style_rounded, size: 64, color: Color(0xFFB0B3CC)),
+            const SizedBox(height: 16),
+            Text('No cards yet!',
+              style: textTheme.titleMedium?.copyWith(color: AppColors.navyBlue, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text('Tap + to add your first card.',
+              style: textTheme.bodySmall?.copyWith(color: const Color(0xFF767AA8))),
+          ],
+        ),
+      );
+    }
+
+    if (finished) {
+      return _ResultView(
+        know: know, dontKnow: dontKnow, total: deck.length,
+        onRestart: onRestart, textTheme: textTheme,
+      );
+    }
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text('Tap the card to reveal the answer',
+                style: textTheme.bodySmall?.copyWith(color: const Color(0xFF9EA3C8))),
+              if (deck[index].isCustom) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6A1B9A).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text('My card',
+                    style: textTheme.labelSmall?.copyWith(
+                      color: const Color(0xFF6A1B9A), fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ],
+          ),
+        ),
+        GestureDetector(
+          onTap: onFlip,
+          child: AnimatedBuilder(
+            animation: flipAnim,
+            builder: (_, __) {
+              final angle = flipAnim.value * pi;
+              final showBack = angle > pi / 2;
+              return Transform(
+                alignment: Alignment.center,
+                transform: Matrix4.identity()
+                  ..setEntry(3, 2, 0.001)
+                  ..rotateY(angle),
+                child: showBack
+                    ? Transform(
+                        alignment: Alignment.center,
+                        transform: Matrix4.identity()..rotateY(pi),
+                        child: _CardBack(card: deck[index], textTheme: textTheme),
+                      )
+                    : _CardFront(card: deck[index], textTheme: textTheme),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 28),
+        AnimatedOpacity(
+          opacity: flipped ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 250),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _AnswerButton(
+                label: "Don't know",
+                icon: Icons.close_rounded,
+                color: AppColors.red,
+                onTap: flipped ? () => onAnswer(false) : null,
+              ),
+              const SizedBox(width: 20),
+              _AnswerButton(
+                label: 'I know it!',
+                icon: Icons.check_rounded,
+                color: const Color(0xFF43A047),
+                onTap: flipped ? () => onAnswer(true) : null,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── My Cards Tab ─────────────────────────────────────────────────────────────
+class _MyCardsTab extends StatelessWidget {
+  final List<_CardData> customCards;
+  final void Function(int) onDelete;
+  final VoidCallback onAdd;
+  final TextTheme textTheme;
+
+  const _MyCardsTab({
+    required this.customCards, required this.onDelete,
+    required this.onAdd, required this.textTheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (customCards.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.bookmarks_outlined, size: 64, color: Color(0xFFB0B3CC)),
+              const SizedBox(height: 16),
+              Text("You haven't added any cards yet.",
+                textAlign: TextAlign.center,
+                style: textTheme.titleSmall?.copyWith(
+                  color: AppColors.navyBlue, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text('Tap + to create your first custom flashcard.',
+                textAlign: TextAlign.center,
+                style: textTheme.bodySmall?.copyWith(color: const Color(0xFF767AA8), height: 1.5)),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: onAdd,
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Add First Card'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.navyBlue,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+          child: Row(
+            children: [
+              Text('${customCards.length} card${customCards.length == 1 ? '' : 's'} created',
+                style: textTheme.bodySmall?.copyWith(color: const Color(0xFF767AA8))),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: onAdd,
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text('Add'),
+                style: TextButton.styleFrom(foregroundColor: AppColors.navyBlue),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+            itemCount: customCards.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            itemBuilder: (_, i) {
+              final card = customCards[i];
+              return Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x101A2150), blurRadius: 10, offset: Offset(0, 3)),
+                  ],
+                ),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  leading: Container(
+                    width: 44, height: 44,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF6A1B9A).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.style_rounded, color: Color(0xFF6A1B9A), size: 22),
+                  ),
+                  title: Text(card.word,
+                    style: textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.bold, color: AppColors.navyBlue)),
+                  subtitle: Text(card.definition,
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: textTheme.bodySmall?.copyWith(color: const Color(0xFF767AA8))),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline_rounded, color: AppColors.red, size: 22),
+                    tooltip: 'Delete',
+                    onPressed: () async {
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (_) => AlertDialog(
+                          title: const Text('Delete card?'),
+                          content: Text('Remove "${card.word}" from your cards?'),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text('Delete', style: TextStyle(color: AppColors.red)),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirm == true) onDelete(i);
+                    },
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Form Field helper ────────────────────────────────────────────────────────
+class _FormField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final String hint;
+  final int maxLines;
+  final String? Function(String?)? validator;
+
+  const _FormField({
+    required this.controller,
+    required this.label,
+    required this.hint,
+    this.maxLines = 1,
+    this.validator,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: controller,
+      maxLines: maxLines,
+      validator: validator,
+      style: const TextStyle(color: AppColors.navyBlue, fontSize: 14),
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        labelStyle: const TextStyle(color: Color(0xFF767AA8), fontSize: 13),
+        hintStyle: const TextStyle(color: Color(0xFFB0B3CC), fontSize: 13),
+        filled: true,
+        fillColor: const Color(0xFFF4F6FB),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFFE8EAF6)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.navyBlue, width: 2),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.red),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.red, width: 2),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       ),
     );
   }
@@ -313,43 +800,35 @@ class _CardFront extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isCustom = card.isCustom;
     return Container(
-      width: 320,
-      height: 220,
+      width: 320, height: 220,
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1A2150), Color(0xFF3D4FA0)],
+        gradient: LinearGradient(
+          colors: isCustom
+              ? [const Color(0xFF4A148C), const Color(0xFF9C27B0)]
+              : [const Color(0xFF1A2150), const Color(0xFF3D4FA0)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(24),
-        boxShadow: const [
-          BoxShadow(color: Color(0x441A2150), blurRadius: 24, offset: Offset(0, 8)),
+        boxShadow: [
+          BoxShadow(
+            color: (isCustom ? const Color(0xFF6A1B9A) : const Color(0xFF1A2150)).withValues(alpha: 0.4),
+            blurRadius: 24, offset: const Offset(0, 8),
+          ),
         ],
       ),
       child: Stack(
         children: [
-          // Ornamento circular
-          Positioned(
-            right: -30, top: -30,
-            child: Container(
-              width: 120, height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white.withValues(alpha: 0.06),
-              ),
-            ),
-          ),
-          Positioned(
-            left: -20, bottom: -20,
-            child: Container(
-              width: 90, height: 90,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white.withValues(alpha: 0.04),
-              ),
-            ),
-          ),
+          Positioned(right: -30, top: -30,
+            child: Container(width: 120, height: 120,
+              decoration: BoxDecoration(shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.06)))),
+          Positioned(left: -20, bottom: -20,
+            child: Container(width: 90, height: 90,
+              decoration: BoxDecoration(shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.04)))),
           Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -360,25 +839,21 @@ class _CardFront extends StatelessWidget {
                     color: Colors.white.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Text(
-                    card.type,
-                    style: textTheme.labelSmall?.copyWith(
-                      color: Colors.white70, letterSpacing: 0.5),
-                  ),
+                  child: Text(card.type,
+                    style: textTheme.labelSmall?.copyWith(color: Colors.white70, letterSpacing: 0.5)),
                 ),
                 const SizedBox(height: 14),
-                Text(
-                  card.word,
+                Text(card.word,
                   style: textTheme.headlineMedium?.copyWith(
-                    color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 0.5),
-                ),
+                    color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
                 const SizedBox(height: 20),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Icon(Icons.touch_app_rounded, color: Colors.white38, size: 16),
                     const SizedBox(width: 4),
-                    Text('tap to flip', style: textTheme.labelSmall?.copyWith(color: Colors.white38)),
+                    Text('tap to flip',
+                      style: textTheme.labelSmall?.copyWith(color: Colors.white38)),
                   ],
                 ),
               ],
@@ -399,14 +874,11 @@ class _CardBack extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 320,
-      height: 220,
+      width: 320, height: 220,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        boxShadow: const [
-          BoxShadow(color: Color(0x201A2150), blurRadius: 24, offset: Offset(0, 8)),
-        ],
+        boxShadow: const [BoxShadow(color: Color(0x201A2150), blurRadius: 24, offset: Offset(0, 8))],
         border: Border.all(color: const Color(0xFFE8EAF6), width: 1.5),
       ),
       child: Padding(
@@ -415,45 +887,25 @@ class _CardBack extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Row(
-              children: [
-                Container(
-                  width: 4, height: 18,
-                  decoration: BoxDecoration(
-                    color: AppColors.red,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Definition',
-                  style: textTheme.labelSmall?.copyWith(
-                    color: AppColors.navyBlue,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.4,
-                  ),
-                ),
-              ],
-            ),
+            Row(children: [
+              Container(width: 4, height: 18,
+                decoration: BoxDecoration(color: AppColors.red, borderRadius: BorderRadius.circular(2))),
+              const SizedBox(width: 8),
+              Text('Definition',
+                style: textTheme.labelSmall?.copyWith(
+                  color: AppColors.navyBlue, fontWeight: FontWeight.bold, letterSpacing: 0.4)),
+            ]),
             const SizedBox(height: 10),
-            Text(
-              card.definition,
-              style: textTheme.bodyMedium?.copyWith(
-                color: AppColors.navyBlue, height: 1.5),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 14),
-            Text(
-              '"${card.example}"',
-              style: textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF767AA8),
-                fontStyle: FontStyle.italic,
-                height: 1.4,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
+            Text(card.definition,
+              style: textTheme.bodyMedium?.copyWith(color: AppColors.navyBlue, height: 1.5),
+              maxLines: 2, overflow: TextOverflow.ellipsis),
+            if (card.example.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              Text('"${card.example}"',
+                style: textTheme.bodySmall?.copyWith(
+                  color: const Color(0xFF767AA8), fontStyle: FontStyle.italic, height: 1.4),
+                maxLines: 2, overflow: TextOverflow.ellipsis),
+            ],
           ],
         ),
       ),
@@ -468,12 +920,7 @@ class _AnswerButton extends StatelessWidget {
   final Color color;
   final VoidCallback? onTap;
 
-  const _AnswerButton({
-    required this.label,
-    required this.icon,
-    required this.color,
-    this.onTap,
-  });
+  const _AnswerButton({required this.label, required this.icon, required this.color, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -491,14 +938,7 @@ class _AnswerButton extends StatelessWidget {
           children: [
             Icon(icon, color: color, size: 20),
             const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
-            ),
+            Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 14)),
           ],
         ),
       ),
@@ -513,12 +953,7 @@ class _ScorePill extends StatelessWidget {
   final int count;
   final String label;
 
-  const _ScorePill({
-    required this.icon,
-    required this.color,
-    required this.count,
-    required this.label,
-  });
+  const _ScorePill({required this.icon, required this.color, required this.count, required this.label});
 
   @override
   Widget build(BuildContext context) {
@@ -533,14 +968,8 @@ class _ScorePill extends StatelessWidget {
         children: [
           Icon(icon, color: color, size: 14),
           const SizedBox(width: 5),
-          Text(
-            '$count $label',
-            style: TextStyle(
-              color: color,
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          Text('$count $label',
+            style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold)),
         ],
       ),
     );
@@ -549,23 +978,18 @@ class _ScorePill extends StatelessWidget {
 
 // ─── Resultado final ──────────────────────────────────────────────────────────
 class _ResultView extends StatelessWidget {
-  final int know;
-  final int dontKnow;
-  final int total;
+  final int know, dontKnow, total;
   final VoidCallback onRestart;
   final TextTheme textTheme;
 
   const _ResultView({
-    required this.know,
-    required this.dontKnow,
-    required this.total,
-    required this.onRestart,
-    required this.textTheme,
+    required this.know, required this.dontKnow, required this.total,
+    required this.onRestart, required this.textTheme,
   });
 
   @override
   Widget build(BuildContext context) {
-    final pct = (know / total * 100).round();
+    final pct = total == 0 ? 0 : (know / total * 100).round();
     final emoji = pct >= 80 ? '🎉' : pct >= 50 ? '💪' : '📚';
     final msg = pct >= 80
         ? 'Excellent work!'
@@ -579,42 +1003,26 @@ class _ResultView extends StatelessWidget {
         children: [
           Text(emoji, style: const TextStyle(fontSize: 64)),
           const SizedBox(height: 16),
-          Text(
-            msg,
-            style: textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold, color: AppColors.navyBlue),
-            textAlign: TextAlign.center,
-          ),
+          Text(msg,
+            style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: AppColors.navyBlue),
+            textAlign: TextAlign.center),
           const SizedBox(height: 28),
-
-          // Score card
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(20),
-              boxShadow: const [
-                BoxShadow(color: Color(0x101A2150), blurRadius: 14, offset: Offset(0, 4)),
-              ],
+              boxShadow: const [BoxShadow(color: Color(0x101A2150), blurRadius: 14, offset: Offset(0, 4))],
             ),
             child: Column(
               children: [
-                // Percentual
-                Text(
-                  '$pct%',
+                Text('$pct%',
                   style: textTheme.displaySmall?.copyWith(
                     fontWeight: FontWeight.bold,
                     color: pct >= 80
                         ? const Color(0xFF43A047)
-                        : pct >= 50
-                            ? const Color(0xFFF9A825)
-                            : AppColors.red,
-                  ),
-                ),
-                Text(
-                  'score',
-                  style: textTheme.bodySmall?.copyWith(color: const Color(0xFF767AA8)),
-                ),
+                        : pct >= 50 ? const Color(0xFFF9A825) : AppColors.red)),
+                Text('score', style: textTheme.bodySmall?.copyWith(color: const Color(0xFF767AA8))),
                 const SizedBox(height: 20),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -630,30 +1038,22 @@ class _ResultView extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 28),
-
-          // Botão jogar de novo
           SizedBox(
             width: double.infinity,
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
                   colors: [Color(0xFF1A2150), Color(0xFF3D4FA0)],
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
+                  begin: Alignment.centerLeft, end: Alignment.centerRight,
                 ),
                 borderRadius: BorderRadius.circular(14),
-                boxShadow: const [
-                  BoxShadow(color: Color(0x441A2150), blurRadius: 12, offset: Offset(0, 4)),
-                ],
+                boxShadow: const [BoxShadow(color: Color(0x441A2150), blurRadius: 12, offset: Offset(0, 4))],
               ),
               child: ElevatedButton.icon(
                 onPressed: onRestart,
                 icon: const Icon(Icons.refresh_rounded, color: Colors.white),
-                label: const Text(
-                  'Play Again',
-                  style: TextStyle(
-                    color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                ),
+                label: const Text('Play Again',
+                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.transparent,
                   shadowColor: Colors.transparent,
@@ -670,8 +1070,7 @@ class _ResultView extends StatelessWidget {
 }
 
 class _StatItem extends StatelessWidget {
-  final String value;
-  final String label;
+  final String value, label;
   final Color color;
 
   const _StatItem({required this.value, required this.label, required this.color});
@@ -680,11 +1079,8 @@ class _StatItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Text(value,
-            style: TextStyle(
-                fontSize: 24, fontWeight: FontWeight.bold, color: color)),
-        Text(label,
-            style: const TextStyle(fontSize: 12, color: Color(0xFF767AA8))),
+        Text(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: color)),
+        Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF767AA8))),
       ],
     );
   }
