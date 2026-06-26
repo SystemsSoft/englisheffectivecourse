@@ -1,9 +1,12 @@
 import 'dart:convert';
 import 'dart:math';
+// dart:html é a API nativa do browser — funciona de forma confiável
+// em Flutter web release builds sem depender de platform channels.
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:html' as html;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'models/flashcard_model.dart';
 import 'services/flashcard_service.dart';
 import 'viewmodels/user_viewmodel.dart';
@@ -83,21 +86,29 @@ class _CardData {
       );
 }
 
-// ─── Cache local (fallback offline) ──────────────────────────────────────────
+// ─── Cache local via localStorage do browser (sem platform channels) ─────────
 Future<List<_CardData>> _loadCachedCards() async {
-  final prefs = await SharedPreferences.getInstance();
-  final raw = prefs.getStringList(_kCustomCardsKey) ?? [];
-  return raw
-      .map((s) => _CardData.fromJson(jsonDecode(s) as Map<String, dynamic>))
-      .toList();
+  try {
+    final raw = html.window.localStorage[_kCustomCardsKey];
+    if (raw == null || raw.isEmpty) return [];
+    final list = jsonDecode(raw) as List<dynamic>;
+    return list
+        .map((e) => _CardData.fromJson(e as Map<String, dynamic>))
+        .toList();
+  } catch (e) {
+    print('[FC] _loadCachedCards erro: $e');
+    return [];
+  }
 }
 
 Future<void> _cacheCards(List<_CardData> cards) async {
-  final prefs = await SharedPreferences.getInstance();
-  await prefs.setStringList(
-    _kCustomCardsKey,
-    cards.map((c) => jsonEncode(c.toJson())).toList(),
-  );
+  try {
+    html.window.localStorage[_kCustomCardsKey] =
+        jsonEncode(cards.map((c) => c.toJson()).toList());
+    print('[FC] _cacheCards: ${cards.length} cards salvos no localStorage');
+  } catch (e) {
+    print('[FC] _cacheCards erro (ignorado): $e');
+  }
 }
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -108,15 +119,12 @@ class FlashcardsScreen extends StatefulWidget {
   State<FlashcardsScreen> createState() => _FlashcardsScreenState();
 }
 
-class _FlashcardsScreenState extends State<FlashcardsScreen>
-    with SingleTickerProviderStateMixin {
+class _FlashcardsScreenState extends State<FlashcardsScreen> {
   final _service = FlashcardService();
 
   List<_CardData> _customCards = [];
   List<_CardData> _deck = [];
   int _index = 0;
-  bool _flipped = false;
-  bool _flipping = false;
   int _know = 0;
   int _dontKnow = 0;
   bool _finished = false;
@@ -126,102 +134,107 @@ class _FlashcardsScreenState extends State<FlashcardsScreen>
   // 0 = Play, 1 = My Cards
   int _tab = 0;
 
-  late AnimationController _flipCtrl;
-  late Animation<double> _flipAnim;
 
   @override
   void initState() {
     super.initState();
-    _flipCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 380),
-    );
-    _flipAnim = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _flipCtrl, curve: Curves.easeInOut),
-    );
+    print('[FC] initState — agendando _loadCards via addPostFrameCallback');
     // Carrega após o primeiro frame para ter acesso ao context/provider
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadCards());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      print('[FC] postFrameCallback disparado — chamando _loadCards');
+      _loadCards();
+    });
   }
 
   Future<void> _loadCards() async {
-    final user = context.read<UserViewModel>().user;
+    print('[FC] _loadCards iniciado');
+    UserViewModel userVM;
+    try {
+      userVM = context.read<UserViewModel>();
+    } catch (e, st) {
+      print('[FC] ERRO ao ler UserViewModel: $e\n$st');
+      return;
+    }
+    final user = userVM.user;
+    print('[FC] user: ${user == null ? "null (não logado)" : "logado: ${user.name} / ${user.className}"}');
+
     if (user == null) {
       // Sem usuário logado — usa somente cache local
-      final cached = await _loadCachedCards();
-      if (!mounted) return;
-      setState(() {
-        _customCards = cached;
-        _loaded = true;
-        _buildDeck();
-      });
+      print('[FC] Sem usuário — carregando cache local');
+      try {
+        final cached = await _loadCachedCards();
+        print('[FC] Cache local carregado: ${cached.length} cards');
+        if (!mounted) { print('[FC] widget desmontado após cache'); return; }
+        setState(() {
+          _customCards = cached;
+          _loaded = true;
+          _buildDeck();
+        });
+        print('[FC] setState concluído (sem usuário) — deck: ${_deck.length} cards');
+      } catch (e, st) {
+        print('[FC] ERRO ao carregar cache local: $e\n$st');
+        if (!mounted) return;
+        setState(() { _loaded = true; _buildDeck(); });
+      }
       return;
     }
 
     try {
+      print('[FC] Buscando flashcards do servidor...');
       final dtos = await _service.fetchAll(
         studentName: user.name,
         className: user.className,
       );
+      print('[FC] fetchAll retornou ${dtos.length} DTOs');
       final cards = dtos.map(_CardData.fromDto).toList();
-      await _cacheCards(cards); // Atualiza cache local
-      if (!mounted) return;
+
+      // Cache em try/catch separado: falha aqui NÃO descarta os cards buscados
+      await _cacheCards(cards);
+
+      if (!mounted) { print('[FC] widget desmontado após fetchAll'); return; }
       setState(() {
         _customCards = cards;
         _loadError = null;
         _loaded = true;
         _buildDeck();
       });
-    } catch (_) {
-      // Fallback offline
+      print('[FC] setState concluído (com servidor) — deck: ${_deck.length} cards');
+    } catch (e, st) {
+      print('[FC] ERRO no fetchAll: $e\n$st');
+      // Fallback offline — _cacheCards já tem try/catch interno, então
+      // _loadCachedCards também nunca vai lançar aqui
       final cached = await _loadCachedCards();
-      if (!mounted) return;
+      print('[FC] Fallback cache: ${cached.length} cards');
+      if (!mounted) { print('[FC] widget desmontado no fallback'); return; }
       setState(() {
         _customCards = cached;
         _loadError = 'Offline — showing cached cards.';
         _loaded = true;
         _buildDeck();
       });
+      print('[FC] setState concluído (fallback offline) — deck: ${_deck.length} cards');
     }
   }
 
   void _buildDeck() {
+    final before = _deck.length;
     _deck = [..._builtinCards, ..._customCards]..shuffle(Random());
     _index = 0;
-    _flipped = false;
     _know = 0;
     _dontKnow = 0;
     _finished = false;
-    _flipCtrl.reset();
+    print('[FC] _buildDeck: builtins=${_builtinCards.length} custom=${_customCards.length} total=${_deck.length} (antes=$before)');
   }
 
   @override
   void dispose() {
-    _flipCtrl.dispose();
     super.dispose();
   }
 
-  void _flip() async {
-    if (_flipping) return;
-    _flipping = true;
-    if (_flipped) {
-      await _flipCtrl.reverse();
-    } else {
-      await _flipCtrl.forward();
-    }
-    setState(() => _flipped = !_flipped);
-    _flipping = false;
-  }
 
-  void _answer(bool knew) async {
-    if (_flipping) return;
-    setState(() { if (knew) _know++; else _dontKnow++; });
-    if (_flipped) {
-      _flipping = true;
-      await _flipCtrl.reverse();
-      _flipping = false;
-    }
+  void _answer(bool knew) {
     setState(() {
-      _flipped = false;
+      if (knew) _know++; else _dontKnow++;
       if (_index + 1 >= _deck.length) {
         _finished = true;
       } else {
@@ -402,6 +415,7 @@ class _FlashcardsScreenState extends State<FlashcardsScreen>
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final total = _deck.length;
+    print('[FC] build — _loaded=$_loaded _deck.length=$total _index=$_index _finished=$_finished _tab=$_tab _loadError=$_loadError');
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
@@ -549,15 +563,13 @@ class _FlashcardsScreenState extends State<FlashcardsScreen>
                                   textTheme: textTheme,
                                 )
                               : _PlayTab(
+                                  // key garante reset da animação a cada novo card
+                                  key: ValueKey(_index),
                                   deck: _deck,
                                   index: _index,
-                                  flipped: _flipped,
-                                  flipping: _flipping,
                                   finished: _finished,
                                   know: _know,
                                   dontKnow: _dontKnow,
-                                  flipAnim: _flipAnim,
-                                  onFlip: _flip,
                                   onAnswer: _answer,
                                   onRestart: _restart,
                                   textTheme: textTheme,
@@ -612,25 +624,46 @@ class _TabButton extends StatelessWidget {
 }
 
 // ─── Play Tab ─────────────────────────────────────────────────────────────────
-class _PlayTab extends StatelessWidget {
+class _PlayTab extends StatefulWidget {
   final List<_CardData> deck;
   final int index;
-  final bool flipped, flipping, finished;
+  final bool finished;
   final int know, dontKnow;
-  final Animation<double> flipAnim;
-  final VoidCallback onFlip, onRestart;
+  final VoidCallback onRestart;
   final void Function(bool) onAnswer;
   final TextTheme textTheme;
 
   const _PlayTab({
-    required this.deck, required this.index, required this.flipped,
-    required this.flipping, required this.finished, required this.know,
-    required this.dontKnow, required this.flipAnim, required this.onFlip,
-    required this.onRestart, required this.onAnswer, required this.textTheme,
+    super.key,
+    required this.deck,
+    required this.index,
+    required this.finished,
+    required this.know,
+    required this.dontKnow,
+    required this.onRestart,
+    required this.onAnswer,
+    required this.textTheme,
   });
 
   @override
+  State<_PlayTab> createState() => _PlayTabState();
+}
+
+class _PlayTabState extends State<_PlayTab> {
+  // Sem AnimationController, sem mixin, sem Transform 3D.
+  // Apenas estado booleano — reveal via AnimatedSize (widget nativo Flutter).
+  bool _revealed = false;
+
+  void _reveal() {
+    if (!_revealed) setState(() => _revealed = true);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final deck = widget.deck;
+    final index = widget.index;
+    print('[PlayTab] build — deck.length=${deck.length} index=$index finished=${widget.finished} revealed=$_revealed');
+
     if (deck.isEmpty) {
       return Center(
         child: Column(
@@ -639,98 +672,102 @@ class _PlayTab extends StatelessWidget {
             const Icon(Icons.style_rounded, size: 64, color: Color(0xFFB0B3CC)),
             const SizedBox(height: 16),
             Text('No cards yet!',
-              style: textTheme.titleMedium?.copyWith(color: AppColors.navyBlue, fontWeight: FontWeight.bold)),
+              style: widget.textTheme.titleMedium?.copyWith(
+                color: AppColors.navyBlue, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             Text('Tap + to add your first card.',
-              style: textTheme.bodySmall?.copyWith(color: const Color(0xFF767AA8))),
+              style: widget.textTheme.bodySmall
+                  ?.copyWith(color: const Color(0xFF767AA8))),
           ],
         ),
       );
     }
 
-    if (finished) {
+    if (widget.finished) {
       return _ResultView(
-        know: know, dontKnow: dontKnow, total: deck.length,
-        onRestart: onRestart, textTheme: textTheme,
+        know: widget.know,
+        dontKnow: widget.dontKnow,
+        total: deck.length,
+        onRestart: widget.onRestart,
+        textTheme: widget.textTheme,
       );
     }
 
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text('Tap the card to reveal the answer',
-                style: textTheme.bodySmall?.copyWith(color: const Color(0xFF9EA3C8))),
-              if (deck[index].isCustom) ...[
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF6A1B9A).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(6),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // ── Hint ────────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  _revealed ? 'How well did you know it?' : 'Tap the card to reveal the answer',
+                  style: widget.textTheme.bodySmall
+                      ?.copyWith(color: const Color(0xFF9EA3C8)),
+                ),
+                if (deck[index].isCustom) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF6A1B9A).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text('My card',
+                      style: widget.textTheme.labelSmall?.copyWith(
+                        color: const Color(0xFF6A1B9A),
+                        fontWeight: FontWeight.bold)),
                   ),
-                  child: Text('My card',
-                    style: textTheme.labelSmall?.copyWith(
-                      color: const Color(0xFF6A1B9A), fontWeight: FontWeight.bold)),
+                ],
+              ],
+            ),
+          ),
+
+          // ── Flashcard unificado — reveal via AnimatedSize ────────────────────────────
+          // Sem flip 3D, sem Transform, sem AnimationController.
+          // AnimatedSize é um widget interno do Flutter: funciona em debug e release idênticos.
+          _FlashCard(
+            card: deck[index],
+            revealed: _revealed,
+            onTap: _reveal,
+            textTheme: widget.textTheme,
+          ),
+
+          const SizedBox(height: 24),
+
+          // ── Botões (aparecem após revelar) ───────────────────────────
+          AnimatedOpacity(
+            opacity: _revealed ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 300),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _AnswerButton(
+                  label: "Don't know",
+                  icon: Icons.close_rounded,
+                  color: AppColors.red,
+                  onTap: _revealed ? () => widget.onAnswer(false) : null,
+                ),
+                const SizedBox(width: 16),
+                _AnswerButton(
+                  label: 'I know it!',
+                  icon: Icons.check_rounded,
+                  color: const Color(0xFF43A047),
+                  onTap: _revealed ? () => widget.onAnswer(true) : null,
                 ),
               ],
-            ],
+            ),
           ),
-        ),
-        GestureDetector(
-          onTap: onFlip,
-          child: AnimatedBuilder(
-            animation: flipAnim,
-            builder: (_, __) {
-              final angle = flipAnim.value * pi;
-              final showBack = angle > pi / 2;
-              return Transform(
-                alignment: Alignment.center,
-                transform: Matrix4.identity()
-                  ..setEntry(3, 2, 0.001)
-                  ..rotateY(angle),
-                child: showBack
-                    ? Transform(
-                        alignment: Alignment.center,
-                        transform: Matrix4.identity()..rotateY(pi),
-                        child: _CardBack(card: deck[index], textTheme: textTheme),
-                      )
-                    : _CardFront(card: deck[index], textTheme: textTheme),
-              );
-            },
-          ),
-        ),
-        const SizedBox(height: 28),
-        AnimatedOpacity(
-          opacity: flipped ? 1.0 : 0.0,
-          duration: const Duration(milliseconds: 250),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _AnswerButton(
-                label: "Don't know",
-                icon: Icons.close_rounded,
-                color: AppColors.red,
-                onTap: flipped ? () => onAnswer(false) : null,
-              ),
-              const SizedBox(width: 20),
-              _AnswerButton(
-                label: 'I know it!',
-                icon: Icons.check_rounded,
-                color: const Color(0xFF43A047),
-                onTap: flipped ? () => onAnswer(true) : null,
-              ),
-            ],
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
+
 
 // ─── My Cards Tab ─────────────────────────────────────────────────────────────
 class _MyCardsTab extends StatelessWidget {
@@ -915,121 +952,162 @@ class _FormField extends StatelessWidget {
   }
 }
 
-// ─── Card Frente ──────────────────────────────────────────────────────────────
-class _CardFront extends StatelessWidget {
+// ─── Flashcard unificado — reveal via AnimatedSize ────────────────────────────
+// Sem flip 3D, sem Transform, sem AnimationController.
+// AnimatedSize é um widget interno do Flutter: funciona em debug e release idênticos.
+class _FlashCard extends StatelessWidget {
   final _CardData card;
+  final bool revealed;
+  final VoidCallback onTap;
   final TextTheme textTheme;
-  const _CardFront({required this.card, required this.textTheme});
+
+  const _FlashCard({
+    super.key,
+    required this.card,
+    required this.revealed,
+    required this.onTap,
+    required this.textTheme,
+  });
 
   @override
   Widget build(BuildContext context) {
     final isCustom = card.isCustom;
-    return Container(
-      width: 320, height: 220,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: isCustom
-              ? [const Color(0xFF4A148C), const Color(0xFF9C27B0)]
-              : [const Color(0xFF1A2150), const Color(0xFF3D4FA0)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: (isCustom ? const Color(0xFF6A1B9A) : const Color(0xFF1A2150)).withValues(alpha: 0.4),
-            blurRadius: 24, offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Stack(
-        children: [
-          Positioned(right: -30, top: -30,
-            child: Container(width: 120, height: 120,
-              decoration: BoxDecoration(shape: BoxShape.circle,
-                color: Colors.white.withValues(alpha: 0.06)))),
-          Positioned(left: -20, bottom: -20,
-            child: Container(width: 90, height: 90,
-              decoration: BoxDecoration(shape: BoxShape.circle,
-                color: Colors.white.withValues(alpha: 0.04)))),
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(card.type,
-                    style: textTheme.labelSmall?.copyWith(color: Colors.white70, letterSpacing: 0.5)),
-                ),
-                const SizedBox(height: 14),
-                Text(card.word,
-                  style: textTheme.headlineMedium?.copyWith(
-                    color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.touch_app_rounded, color: Colors.white38, size: 16),
-                    const SizedBox(width: 4),
-                    Text('tap to flip',
-                      style: textTheme.labelSmall?.copyWith(color: Colors.white38)),
-                  ],
-                ),
-              ],
+    print('[FlashCard] build — word="${card.word}" revealed=$revealed isCustom=$isCustom');
+    final gradient = isCustom
+        ? const LinearGradient(
+            colors: [Color(0xFF4A148C), Color(0xFF9C27B0)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          )
+        : const LinearGradient(
+            colors: [Color(0xFF1A2150), Color(0xFF3D4FA0)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          );
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 320,
+        decoration: BoxDecoration(
+          gradient: gradient,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: (isCustom
+                  ? const Color(0xFF6A1B9A)
+                  : const Color(0xFF1A2150)).withValues(alpha: 0.4),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Card Verso ───────────────────────────────────────────────────────────────
-class _CardBack extends StatelessWidget {
-  final _CardData card;
-  final TextTheme textTheme;
-  const _CardBack({required this.card, required this.textTheme});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 320, height: 220,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: const [BoxShadow(color: Color(0x201A2150), blurRadius: 24, offset: Offset(0, 8))],
-        border: Border.all(color: const Color(0xFFE8EAF6), width: 1.5),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Row(children: [
-              Container(width: 4, height: 18,
-                decoration: BoxDecoration(color: AppColors.red, borderRadius: BorderRadius.circular(2))),
-              const SizedBox(width: 8),
-              Text('Definition',
-                style: textTheme.labelSmall?.copyWith(
-                  color: AppColors.navyBlue, fontWeight: FontWeight.bold, letterSpacing: 0.4)),
-            ]),
-            const SizedBox(height: 10),
-            Text(card.definition,
-              style: textTheme.bodyMedium?.copyWith(color: AppColors.navyBlue, height: 1.5),
-              maxLines: 2, overflow: TextOverflow.ellipsis),
-            if (card.example.isNotEmpty) ...[
-              const SizedBox(height: 14),
-              Text('"${card.example}"',
-                style: textTheme.bodySmall?.copyWith(
-                  color: const Color(0xFF767AA8), fontStyle: FontStyle.italic, height: 1.4),
-                maxLines: 2, overflow: TextOverflow.ellipsis),
-            ],
           ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Stack(
+            children: [
+              Positioned(right: -30, top: -30,
+                child: Container(width: 120, height: 120,
+                  decoration: BoxDecoration(shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: 0.06)))),
+              Positioned(left: -20, bottom: -20,
+                child: Container(width: 90, height: 90,
+                  decoration: BoxDecoration(shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: 0.04)))),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // ── Palavra (sempre visível) ────────────────────────
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(24, 32, 24, revealed ? 16 : 32),
+                    child: Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(card.type,
+                            style: textTheme.labelSmall?.copyWith(
+                              color: Colors.white70, letterSpacing: 0.5)),
+                        ),
+                        const SizedBox(height: 14),
+                        Text(card.word,
+                          style: textTheme.headlineMedium?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5)),
+                        if (!revealed) ...[
+                          const SizedBox(height: 20),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.touch_app_rounded,
+                                color: Colors.white38, size: 16),
+                              const SizedBox(width: 4),
+                              Text('tap to reveal',
+                                style: textTheme.labelSmall
+                                    ?.copyWith(color: Colors.white38)),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  // ── Definição desce com AnimatedSize ────────────────
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 380),
+                    curve: Curves.easeOutCubic,
+                    child: revealed
+                        ? Container(
+                            width: double.infinity,
+                            margin: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+                            padding: const EdgeInsets.all(18),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.13),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.2)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(children: [
+                                  Container(
+                                    width: 3, height: 14,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white70,
+                                      borderRadius: BorderRadius.circular(2))),
+                                  const SizedBox(width: 8),
+                                  Text('Definition',
+                                    style: textTheme.labelSmall?.copyWith(
+                                      color: Colors.white70,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 0.4)),
+                                ]),
+                                const SizedBox(height: 8),
+                                Text(card.definition,
+                                  style: textTheme.bodyMedium?.copyWith(
+                                    color: Colors.white, height: 1.5)),
+                                if (card.example.isNotEmpty) ...[
+                                  const SizedBox(height: 10),
+                                  Text('"${card.example}"',
+                                    style: textTheme.bodySmall?.copyWith(
+                                      color: Colors.white60,
+                                      fontStyle: FontStyle.italic,
+                                      height: 1.4)),
+                                ],
+                              ],
+                            ),
+                          )
+                        : const SizedBox(width: double.infinity, height: 0),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
