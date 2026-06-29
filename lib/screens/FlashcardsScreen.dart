@@ -7,10 +7,10 @@ import 'dart:html' as html;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'models/flashcard_model.dart';
-import 'services/flashcard_service.dart';
-import 'viewmodels/user_viewmodel.dart';
-import 'app_theme.dart';
+import '../models/flashcard_model.dart';
+import '../services/flashcard_service.dart';
+import '../viewmodels/user_viewmodel.dart';
+import '../app_theme.dart';
 
 // ─── Banco de flashcards fixos (iniciante) ────────────────────────────────────
 const _builtinCards = [

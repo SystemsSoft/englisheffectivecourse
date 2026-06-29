@@ -3,11 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'HomeScreen.dart';
-import 'services/access_service.dart';
-import 'models/access_model.dart';
-import 'models/user_model.dart';
-import 'viewmodels/user_viewmodel.dart';
-import 'app_theme.dart';
+import '../services/access_service.dart';
+import '../models/access_model.dart';
+import '../models/user_model.dart';
+import '../viewmodels/user_viewmodel.dart';
+import '../app_theme.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});

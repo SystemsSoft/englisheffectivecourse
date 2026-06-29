@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 import 'package:audio_session/audio_session.dart';
-import 'app_theme.dart';
-import 'services/media_session_service.dart';
-import 'services/radio_player.dart';
+import '../app_theme.dart';
+import '../services/media_session_service.dart';
+import '../services/radio_player.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Modelo de Rádio

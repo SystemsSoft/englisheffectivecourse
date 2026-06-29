@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'viewmodels/user_viewmodel.dart';
 import 'viewmodels/upload_viewmodel.dart';
-import 'LoginScreen.dart';
+import 'screens/LoginScreen.dart';
 import 'app_theme.dart';
 import 'pwa_install_banner.dart';
 
