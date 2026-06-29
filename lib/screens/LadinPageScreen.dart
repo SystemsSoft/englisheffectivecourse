@@ -153,16 +153,34 @@ class LandingPage extends StatelessWidget {
         automaticallyImplyLeading: false,
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 16.0),
+            padding: const EdgeInsets.only(right: 20.0),
             child: Tooltip(
               message: 'Acesso do Aluno',
-              child: IconButton(
-                icon: const Icon(Icons.person, color: Color(0xFF0D1B6E), size: 28),
-                onPressed: () {
+              child: InkWell(
+                onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const LoginScreen()),
                   );
                 },
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.person_rounded, color: Color(0xFF0D1B6E), size: 24),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Acesso Aluno',
+                        style: TextStyle(
+                          color: Color(0xFF0D1B6E),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
