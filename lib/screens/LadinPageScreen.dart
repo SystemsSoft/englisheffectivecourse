@@ -235,9 +235,37 @@ class _HeroSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      color: const Color(0xFF0D1B6E), // fundo azul para áreas sem imagem
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            const Color(0xFF0D1B6E),
+            const Color(0xFF1A2B7E),
+            const Color(0xFF1A2B7E),
+            const Color(0xFF2A3B8E).withValues(alpha: 0.8),
+          ],
+          stops: const [0.0, 0.3, 0.7, 1.0],
+        ),
+      ),
       child: Stack(
         children: [
+          // Gradiente nas bordas para efeito de claridade
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: Alignment.center,
+                  radius: 1.2,
+                  colors: [
+                    const Color(0xFF2A4A9E).withValues(alpha: 0.3),
+                    const Color(0xFF0D1B6E).withValues(alpha: 0.0),
+                  ],
+                  stops: const [0.0, 1.0],
+                ),
+              ),
+            ),
+          ),
           // Imagem de fundo sem cortes — contida dentro do espaço
           Positioned.fill(
             child: Image.network(
