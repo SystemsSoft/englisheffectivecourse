@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'LoginScreen.dart';
 
 
 
@@ -146,6 +147,27 @@ class LandingPage extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        automaticallyImplyLeading: false,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16.0),
+            child: Tooltip(
+              message: 'Acesso do Aluno',
+              child: IconButton(
+                icon: const Icon(Icons.login_rounded, color: Color(0xFF0D1B6E), size: 28),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
           final uri = Uri.parse(
