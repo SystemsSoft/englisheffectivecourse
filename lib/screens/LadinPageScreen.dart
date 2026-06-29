@@ -157,7 +157,7 @@ class LandingPage extends StatelessWidget {
             child: Tooltip(
               message: 'Acesso do Aluno',
               child: IconButton(
-                icon: const Icon(Icons.login_rounded, color: Color(0xFF0D1B6E), size: 28),
+                icon: const Icon(Icons.person, color: Color(0xFF0D1B6E), size: 28),
                 onPressed: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -223,7 +223,7 @@ class _HeroSection extends StatelessWidget {
           // Imagem de fundo sem cortes — contida dentro do espaço
           Positioned.fill(
             child: Image.network(
-              'https://repo-english-class.s3.us-east-2.amazonaws.com/lessons/banner-transparent.png',
+              'https://repo-english-class.s3.us-east-2.amazonaws.com/lessons/perfil_image.png',
               fit: BoxFit.contain,
               alignment: isMobile ? Alignment.bottomCenter : Alignment.centerRight,
               loadingBuilder: (_, child, progress) =>
@@ -438,13 +438,12 @@ class _AboutSection extends StatelessWidget {
         vertical: 60,
       ),
       child: isMobile
-          ? Column(children: [_aboutText(), const SizedBox(height: 32), _aboutImage()])
+          ? Column(children: [_aboutText(), const SizedBox(height: 32)])
           : Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Expanded(child: _aboutText()),
           const SizedBox(width: 48),
-          Expanded(child: _aboutImage()),
         ],
       ),
     );
@@ -482,15 +481,6 @@ class _AboutSection extends StatelessWidget {
           style: TextStyle(fontSize: 16, color: Color(0xFF555555), height: 1.7),
         ),
       ],
-    );
-  }
-
-  Widget _aboutImage() {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: Image.network(
-          'https://repo-english-class.s3.us-east-2.amazonaws.com/lessons/banner.jpg',
-          fit: BoxFit.contain, width: double.infinity),
     );
   }
 }
