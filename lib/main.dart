@@ -1,8 +1,8 @@
+import 'package:englisheffectivecourse/screens/LadinPageScreen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'viewmodels/user_viewmodel.dart';
 import 'viewmodels/upload_viewmodel.dart';
-import 'screens/LoginScreen.dart';
 import 'app_theme.dart';
 import 'pwa_install_banner.dart';
 
@@ -24,7 +24,7 @@ class MyApp extends StatelessWidget {
         title: 'English Effective Course',
         theme: AppTheme.light,
         builder: (context, child) => PwaInstallWrapper(child: child!),
-        home: const LoginScreen(),
+        home: const LandingPageScreen(),
       ),
     );
   }
