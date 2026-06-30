@@ -10,7 +10,7 @@ class LandingPageScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'English Effective Course - Renata Cerqueira',
+      title: 'Effective English Course - Renata Cerqueira',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1A237E)),
