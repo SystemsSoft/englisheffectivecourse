@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import '../models/access_model.dart';
 
 class AccessService {
-  static const String _baseUrl = 'http://52.14.114.169:8080';
+  static const String _baseUrl = 'https://api.effectiveenglishcourse.com';
 
   /// Busca todos os registros e valida name + password.
   /// Retorna o [AccessDto] do aluno se encontrado, ou lança uma exceção.
