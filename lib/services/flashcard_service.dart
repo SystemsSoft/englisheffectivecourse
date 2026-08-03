@@ -4,7 +4,7 @@ import '../models/flashcard_model.dart';
 
 class FlashcardService {
   static const String _baseUrl =
-      'https://athennaserver-5c57d33a2f13.herokuapp.com';
+      'https://api.effectiveenglishcourse.com';
 
   static const Map<String, String> _headers = {
     'Content-Type': 'application/json',

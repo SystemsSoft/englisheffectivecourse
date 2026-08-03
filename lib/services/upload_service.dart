@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import '../models/upload_model.dart';
 
 class UploadService {
-  static const String _baseUrl = 'https://athennaserver-5c57d33a2f13.herokuapp.com';
+  static const String _baseUrl = 'https://api.effectiveenglishcourse.com';
 
   Future<List<UploadFilteredDto>> fetchByClassName(String className) async {
     final uri = Uri.parse('$_baseUrl/upload/filter').replace(
