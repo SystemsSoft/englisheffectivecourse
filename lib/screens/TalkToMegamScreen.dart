@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import '../services/gemini_service.dart';
 import '../models/chat_message.dart';
 import '../app_theme.dart';
@@ -14,17 +15,55 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final GeminiService _geminiService = GeminiService();
+  final FlutterTts _flutterTts = FlutterTts();
   final List<ChatMessage> _messages = [];
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    // Initial message from Megam
+    _initTts();
     _messages.add(ChatMessage(
-      text: "Hello! I am Megam, your English conversation tutor. I'm here to help you practice and improve your speaking skills. How are you feeling today?",
+      text: "Hello! I am Megam, your English tutor. How can I help you today?",
       isUser: false,
     ));
+  }
+
+  void _initTts() async {
+    await _flutterTts.setLanguage("en-US");
+    await _flutterTts.setPitch(1.2); // Tom mais agudo para voz feminina
+    await _flutterTts.setSpeechRate(0.5); // Velocidade natural para aprendizado
+
+    // Tenta selecionar uma voz feminina específica se disponível no sistema
+    var voices = await _flutterTts.getVoices;
+    try {
+      var femaleVoice = voices.firstWhere(
+        (v) => v["name"].toString().toLowerCase().contains("female") ||
+               v["name"].toString().toLowerCase().contains("zira") ||
+               v["name"].toString().toLowerCase().contains("samantha"),
+        orElse: () => voices.first,
+      );
+      await _flutterTts.setVoice({"name": femaleVoice["name"], "locale": femaleVoice["locale"]});
+    } catch (e) {
+      print("Não foi possível definir voz específica, usando padrão.");
+    }
+  }
+
+  @override
+  void dispose() {
+    _flutterTts.stop();
+    _controller.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _speak(String text) async {
+    // Pega apenas o que vem ANTES do marcador '---' para garantir que fale apenas inglês
+    String englishText = text.split("---").first.trim();
+
+    if (englishText.isNotEmpty) {
+      await _flutterTts.speak(englishText);
+    }
   }
 
   void _sendMessage() async {
@@ -40,18 +79,18 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
 
     try {
       final response = await _geminiService.sendMessage(text);
+
       setState(() {
-        _messages.add(ChatMessage(text: response, isUser: false));
+        _messages.add(ChatMessage(text: response.text, isUser: false));
         _isLoading = false;
       });
       _scrollToBottom();
+
+      // Megam fala o texto em inglês
+      _speak(response.text);
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Erro: $e")),
-      );
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e")));
     }
   }
 
@@ -75,7 +114,6 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
         backgroundColor: AppColors.navyBlue,
         foregroundColor: Colors.white,
         centerTitle: true,
-        elevation: 0,
       ),
       body: Container(
         color: const Color(0xFFF4F6FB),
@@ -86,22 +124,15 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
                 controller: _scrollController,
                 padding: const EdgeInsets.all(16),
                 itemCount: _messages.length,
-                itemBuilder: (context, index) {
-                  final message = _messages[index];
-                  return _ChatBubble(message: message);
-                },
+                itemBuilder: (context, index) => _ChatBubble(message: _messages[index]),
               ),
             ),
             if (_isLoading)
               const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8.0),
+                padding: EdgeInsets.all(8.0),
                 child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.navyBlue),
               ),
-            _InputArea(
-              controller: _controller,
-              onSend: _sendMessage,
-              isLoading: _isLoading,
-            ),
+            _InputArea(controller: _controller, onSend: _sendMessage, isLoading: _isLoading),
           ],
         ),
       ),
@@ -111,39 +142,30 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
 
 class _ChatBubble extends StatelessWidget {
   final ChatMessage message;
-
   const _ChatBubble({required this.message});
 
   @override
   Widget build(BuildContext context) {
+    final isUser = message.isUser;
     return Align(
-      alignment: message.isUser ? Alignment.centerRight : Alignment.centerLeft,
+      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.8),
         decoration: BoxDecoration(
-          color: message.isUser ? AppColors.navyBlue : Colors.white,
+          color: isUser ? AppColors.navyBlue : Colors.white,
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(16),
             topRight: const Radius.circular(16),
-            bottomLeft: Radius.circular(message.isUser ? 16 : 0),
-            bottomRight: Radius.circular(message.isUser ? 0 : 16),
+            bottomLeft: Radius.circular(isUser ? 16 : 0),
+            bottomRight: Radius.circular(isUser ? 0 : 16),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 5,
-              offset: const Offset(0, 2),
-            ),
-          ],
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 5, offset: const Offset(0, 2))],
         ),
         child: Text(
           message.text,
-          style: TextStyle(
-            color: message.isUser ? Colors.white : AppColors.navyBlue,
-            fontSize: 15,
-          ),
+          style: TextStyle(color: isUser ? Colors.white : AppColors.navyBlue, fontSize: 15),
         ),
       ),
     );
@@ -155,39 +177,23 @@ class _InputArea extends StatelessWidget {
   final VoidCallback onSend;
   final bool isLoading;
 
-  const _InputArea({
-    required this.controller,
-    required this.onSend,
-    required this.isLoading,
-  });
+  const _InputArea({required this.controller, required this.onSend, required this.isLoading});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black12,
-            blurRadius: 10,
-            offset: Offset(0, -2),
-          ),
-        ],
-      ),
+      decoration: const BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -2))]),
       child: Row(
         children: [
           Expanded(
             child: TextField(
               controller: controller,
               decoration: InputDecoration(
-                hintText: "Digite sua mensagem...",
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide.none,
-                ),
+                hintText: "Pratique seu inglês...",
                 filled: true,
                 fillColor: const Color(0xFFF0F2F8),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               ),
               onSubmitted: (_) => onSend(),
