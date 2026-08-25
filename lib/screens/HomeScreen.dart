@@ -6,6 +6,7 @@ import '../viewmodels/upload_viewmodel.dart';
 import 'LoginScreen.dart';
 import 'VideoPlayerScreen.dart';
 import 'ListeningScreen.dart';
+import 'TalkToMegamScreen.dart';
 import '../WordOfTheDayScreen.dart';
 import 'DictionaryScreen.dart';
 import 'FlashcardsScreen.dart';
@@ -56,6 +57,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     // Card turma
                     _ClassCard(user: user, textTheme: textTheme),
                     const SizedBox(height: 16),
+
+                    // Fale com a Megam
+                    _TalkToMegamBanner(),
+                    const SizedBox(height: 12),
 
                     // Botão Praticar Listening
                     _ListeningBanner(),
@@ -346,6 +351,79 @@ class _InfoTile extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Banner Fale com a Megam
+// ─────────────────────────────────────────────────────────────────────────────
+class _TalkToMegamBanner extends StatelessWidget {
+  const _TalkToMegamBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const TalkToMegamScreen()),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF1A2150), Color(0xFF47569C)],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x441A2150),
+              blurRadius: 14,
+              offset: Offset(0, 5),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.psychology_rounded,
+                  color: Colors.white, size: 28),
+            ),
+            const SizedBox(width: 16),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Fale com a Megam',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
+                  ),
+                  SizedBox(height: 3),
+                  Text(
+                    'Sua tutora de IA para praticar conversação',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded,
+                color: Colors.white70, size: 26),
+          ],
+        ),
+      ),
     );
   }
 }
