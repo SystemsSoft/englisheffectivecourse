@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../services/gemini_service.dart';
+import '../services/tts_service.dart';
+import '../services/radio_player.dart';
 import '../models/chat_message.dart';
 import '../app_theme.dart';
 
@@ -15,6 +17,8 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final GeminiService _geminiService = GeminiService();
+  final TTSService _serverTts = TTSService();
+  final RadioPlayer _audioPlayer = RadioPlayer();
   final FlutterTts _flutterTts = FlutterTts();
   final List<ChatMessage> _messages = [];
   bool _isLoading = false;
@@ -67,6 +71,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
 
   @override
   void dispose() {
+    _audioPlayer.dispose();
     _flutterTts.stop();
     _controller.dispose();
     _scrollController.dispose();
@@ -78,11 +83,23 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     String englishText = text.split("---").first.trim();
 
     // Remove emojis e caracteres especiais que o TTS costuma ler em voz alta
-    // Essa regex remove a maioria dos emojis e símbolos pictográficos
     String cleanText = englishText.replaceAll(RegExp(r'[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E6}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1F018}-\u{1F093}]', unicode: true), '');
 
     if (cleanText.isNotEmpty) {
-      await _flutterTts.speak(cleanText);
+      try {
+        // Tenta usar o áudio gerado pelo servidor (Edge-TTS + S3)
+        final url = await _serverTts.getAudioUrl(cleanText);
+        if (url != null) {
+          await _audioPlayer.setUrl(url);
+          await _audioPlayer.play();
+        } else {
+          // Fallback para o TTS local do dispositivo se o servidor falhar
+          await _flutterTts.speak(cleanText);
+        }
+      } catch (e) {
+        print("Erro ao processar áudio do servidor: $e");
+        await _flutterTts.speak(cleanText);
+      }
     }
   }
 
