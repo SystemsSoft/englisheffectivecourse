@@ -31,21 +31,37 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
 
   void _initTts() async {
     await _flutterTts.setLanguage("en-US");
-    await _flutterTts.setPitch(1.2); // Tom mais agudo para voz feminina
-    await _flutterTts.setSpeechRate(0.5); // Velocidade natural para aprendizado
+    // Configurações para uma fala natural e calma de tutor
+    await _flutterTts.setPitch(1.0);
+    await _flutterTts.setSpeechRate(0.5);
+    await _flutterTts.setVolume(1.0);
 
-    // Tenta selecionar uma voz feminina específica se disponível no sistema
+    // Tenta selecionar motores de alta fidelidade
     var voices = await _flutterTts.getVoices;
     try {
       var femaleVoice = voices.firstWhere(
-        (v) => v["name"].toString().toLowerCase().contains("female") ||
-               v["name"].toString().toLowerCase().contains("zira") ||
-               v["name"].toString().toLowerCase().contains("samantha"),
-        orElse: () => voices.first,
+        (v) {
+          final name = v["name"].toString().toLowerCase();
+          final locale = v["locale"].toString().toLowerCase();
+
+          // No Android, procuramos 'network' ou 'neural' (vozes processadas na nuvem pela Google)
+          // No iOS, vozes como 'samantha' ou 'enhanced'
+          return locale.contains("en-us") && (
+            name.contains("network") ||
+            name.contains("neural") ||
+            name.contains("samantha") ||
+            name.contains("enhanced") ||
+            name.contains("premium")
+          );
+        },
+        orElse: () => voices.firstWhere(
+          (v) => v["locale"].toString().toLowerCase().contains("en-us"),
+          orElse: () => voices.first,
+        ),
       );
       await _flutterTts.setVoice({"name": femaleVoice["name"], "locale": femaleVoice["locale"]});
     } catch (e) {
-      print("Não foi possível definir voz específica, usando padrão.");
+      print("Erro ao selecionar voz: $e");
     }
   }
 
@@ -61,8 +77,12 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     // Pega apenas o que vem ANTES do marcador '---' para garantir que fale apenas inglês
     String englishText = text.split("---").first.trim();
 
-    if (englishText.isNotEmpty) {
-      await _flutterTts.speak(englishText);
+    // Remove emojis e caracteres especiais que o TTS costuma ler em voz alta
+    // Essa regex remove a maioria dos emojis e símbolos pictográficos
+    String cleanText = englishText.replaceAll(RegExp(r'[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E6}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1F018}-\u{1F093}]', unicode: true), '');
+
+    if (cleanText.isNotEmpty) {
+      await _flutterTts.speak(cleanText);
     }
   }
 
