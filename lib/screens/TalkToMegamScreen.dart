@@ -161,6 +161,12 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   }
 
   void _sendMessage() async {
+    // Para o microfone e cancela resultados pendentes
+    if (_isListening) {
+      await _speechToText.cancel();
+      setState(() => _isListening = false);
+    }
+
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
