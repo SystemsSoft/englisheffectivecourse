@@ -78,7 +78,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     super.dispose();
   }
 
-  Future<void> _speak(String text) async {
+  Future<void> _speak(String text, {String? audioUrl}) async {
     // Pega apenas o que vem ANTES do marcador '---' para garantir que fale apenas inglês
     String englishText = text.split("---").first.trim();
 
@@ -87,8 +87,8 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
 
     if (cleanText.isNotEmpty) {
       try {
-        // Tenta usar o áudio gerado pelo servidor (Edge-TTS + S3)
-        final url = await _serverTts.getAudioUrl(cleanText);
+        // Usa o áudio vindo da resposta do Gemini ou tenta buscar se não houver
+        final url = audioUrl ?? await _serverTts.getAudioUrl(cleanText);
         if (url != null) {
           await _audioPlayer.setUrl(url);
           await _audioPlayer.play();
@@ -123,8 +123,8 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
       });
       _scrollToBottom();
 
-      // Megam fala o texto em inglês
-      _speak(response.text);
+      // Megam fala o texto em inglês usando a URL vinda do servidor
+      _speak(response.text, audioUrl: response.audioUrl);
     } catch (e) {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e")));
