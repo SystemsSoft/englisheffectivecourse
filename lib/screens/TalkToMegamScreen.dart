@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 import '../services/gemini_service.dart';
 import '../services/tts_service.dart';
 import '../services/radio_player.dart';
@@ -20,17 +21,73 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   final TTSService _serverTts = TTSService();
   final RadioPlayer _audioPlayer = RadioPlayer();
   final FlutterTts _flutterTts = FlutterTts();
+  final SpeechToText _speechToText = SpeechToText();
   final List<ChatMessage> _messages = [];
   bool _isLoading = false;
+  bool _isSpeechInitialized = false;
+  bool _isListening = false;
 
   @override
   void initState() {
     super.initState();
     _initTts();
+    _initSpeech();
     _messages.add(ChatMessage(
       text: "Hello! I am Megam, your English tutor. How can I help you today?",
       isUser: false,
     ));
+  }
+
+  void _initSpeech() async {
+    _isSpeechInitialized = await _speechToText.initialize(
+      onError: (val) => print('Erro STT: $val'),
+      onStatus: (val) {
+        print('Status STT: $val');
+        if (val == 'done' || val == 'notListening') {
+          setState(() => _isListening = false);
+        }
+      },
+    );
+    setState(() {});
+  }
+
+  void _toggleListening() async {
+    if (!_isSpeechInitialized) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("O reconhecimento de voz não está disponível.")),
+      );
+      return;
+    }
+
+    if (_isListening) {
+      await _speechToText.stop();
+      setState(() => _isListening = false);
+      // Envia automaticamente se houver texto
+      if (_controller.text.isNotEmpty) {
+        _sendMessage();
+      }
+    } else {
+      setState(() {
+        _isListening = true;
+        _controller.clear();
+      });
+      await _speechToText.listen(
+        onResult: (val) {
+          setState(() {
+            _controller.text = val.recognizedWords;
+          });
+          // Se for o resultado final, aguarda um pouco e envia
+          if (val.finalResult) {
+            Future.delayed(const Duration(milliseconds: 800), () {
+              if (_isListening) { // Ainda estava ouvindo, mas parou por silêncio
+                _toggleListening();
+              }
+            });
+          }
+        },
+        localeId: "en-US", // Força inglês para prática
+      );
+    }
   }
 
   void _initTts() async {
@@ -169,7 +226,13 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
                 padding: EdgeInsets.all(8.0),
                 child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.navyBlue),
               ),
-            _InputArea(controller: _controller, onSend: _sendMessage, isLoading: _isLoading),
+            _InputArea(
+              controller: _controller,
+              onSend: _sendMessage,
+              isLoading: _isLoading,
+              isListening: _isListening,
+              onMicPressed: _toggleListening,
+            ),
           ],
         ),
       ),
@@ -213,8 +276,16 @@ class _InputArea extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onSend;
   final bool isLoading;
+  final bool isListening;
+  final VoidCallback onMicPressed;
 
-  const _InputArea({required this.controller, required this.onSend, required this.isLoading});
+  const _InputArea({
+    required this.controller,
+    required this.onSend,
+    required this.isLoading,
+    required this.isListening,
+    required this.onMicPressed,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -227,13 +298,24 @@ class _InputArea extends StatelessWidget {
             child: TextField(
               controller: controller,
               decoration: InputDecoration(
-                hintText: "Pratique seu inglês...",
+                hintText: isListening ? "Ouvindo..." : "Pratique seu inglês...",
                 filled: true,
                 fillColor: const Color(0xFFF0F2F8),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               ),
               onSubmitted: (_) => onSend(),
+            ),
+          ),
+          const SizedBox(width: 8),
+          CircleAvatar(
+            backgroundColor: isListening ? AppColors.navyBlue : const Color(0xFFF0F2F8),
+            child: IconButton(
+              icon: Icon(
+                isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                color: isListening ? Colors.white : AppColors.navyBlue,
+              ),
+              onPressed: isLoading ? null : onMicPressed,
             ),
           ),
           const SizedBox(width: 8),
