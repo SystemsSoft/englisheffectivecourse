@@ -1,13 +1,12 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../utils/api_config.dart';
 
 class TTSService {
-  static const String _baseUrl = 'https://api.effectiveenglishcourse.com';
-
   Future<String?> getAudioUrl(String text, {String lang = "en-US"}) async {
     try {
       final response = await http.post(
-        Uri.parse('$_baseUrl/chat/tts'),
+        Uri.parse('${ApiConfig.baseUrl}/chat/tts'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'text': text,

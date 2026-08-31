@@ -1,14 +1,13 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/access_model.dart';
+import '../utils/api_config.dart';
 
 class AccessService {
-  static const String _baseUrl = 'https://api.effectiveenglishcourse.com';
-
   /// Busca todos os registros e valida name + password.
   /// Retorna o [AccessDto] do aluno se encontrado, ou lança uma exceção.
   Future<AccessDto> login(String name, String password) async {
-    final uri = Uri.parse('$_baseUrl/access');
+    final uri = Uri.parse('${ApiConfig.baseUrl}/access');
 
     final response = await http.get(
       uri,

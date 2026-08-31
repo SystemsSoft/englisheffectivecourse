@@ -1,12 +1,11 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/upload_model.dart';
+import '../utils/api_config.dart';
 
 class UploadService {
-  static const String _baseUrl = 'https://api.effectiveenglishcourse.com';
-
   Future<List<UploadFilteredDto>> fetchByClassName(String className) async {
-    final uri = Uri.parse('$_baseUrl/upload/filter').replace(
+    final uri = Uri.parse('${ApiConfig.baseUrl}/upload/filter').replace(
       queryParameters: {'className': className},
     );
 

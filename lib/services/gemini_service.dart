@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../utils/api_config.dart';
 
 class GeminiResponse {
   final String text;
@@ -9,12 +10,10 @@ class GeminiResponse {
 }
 
 class GeminiService {
-  static const String _baseUrl = 'https://api.effectiveenglishcourse.com';
-
   Future<GeminiResponse> sendMessage(String message, {String lang = "en-US"}) async {
     try {
       final response = await http.post(
-        Uri.parse('$_baseUrl/chat/message'),
+        Uri.parse('${ApiConfig.baseUrl}/chat/message'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'prompt': message,

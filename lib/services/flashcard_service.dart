@@ -1,11 +1,9 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/flashcard_model.dart';
+import '../utils/api_config.dart';
 
 class FlashcardService {
-  static const String _baseUrl =
-      'https://api.effectiveenglishcourse.com';
-
   static const Map<String, String> _headers = {
     'Content-Type': 'application/json',
   };
@@ -16,7 +14,7 @@ class FlashcardService {
     required String studentName,
     required String className,
   }) async {
-    final uri = Uri.parse('$_baseUrl/flashcards').replace(
+    final uri = Uri.parse('${ApiConfig.baseUrl}/flashcards').replace(
       queryParameters: {
         'studentName': studentName,
         'className': className,
@@ -40,7 +38,7 @@ class FlashcardService {
   // ─── POST /flashcards ─────────────────────────────────────────────────────
   /// Cria um novo flashcard e retorna o objeto salvo (com id).
   Future<FlashcardDto> create(FlashcardDto card) async {
-    final uri = Uri.parse('$_baseUrl/flashcards');
+    final uri = Uri.parse('${ApiConfig.baseUrl}/flashcards');
 
     final response = await http.post(
       uri,
@@ -65,7 +63,7 @@ class FlashcardService {
     required String studentName,
     required String className,
   }) async {
-    final uri = Uri.parse('$_baseUrl/flashcards/$id').replace(
+    final uri = Uri.parse('${ApiConfig.baseUrl}/flashcards/$id').replace(
       queryParameters: {
         'studentName': studentName,
         'className': className,
@@ -94,7 +92,7 @@ class FlashcardService {
     required String studentName,
     required String className,
   }) async {
-    final uri = Uri.parse('$_baseUrl/flashcards/$id').replace(
+    final uri = Uri.parse('${ApiConfig.baseUrl}/flashcards/$id').replace(
       queryParameters: {
         'studentName': studentName,
         'className': className,
@@ -115,7 +113,7 @@ class FlashcardService {
     required String studentName,
     required String className,
   }) async {
-    final uri = Uri.parse('$_baseUrl/flashcards').replace(
+    final uri = Uri.parse('${ApiConfig.baseUrl}/flashcards').replace(
       queryParameters: {
         'studentName': studentName,
         'className': className,
