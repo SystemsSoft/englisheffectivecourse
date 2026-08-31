@@ -43,6 +43,7 @@ class _LoginScreenState extends State<LoginScreen> {
       context.read<UserViewModel>().setUser(
             User(
               name: aluno.name,
+              email: aluno.email,
               classCode: aluno.classCode,
               className: aluno.className,
             ),
