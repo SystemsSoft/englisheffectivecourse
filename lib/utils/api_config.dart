@@ -1,5 +1,6 @@
 class ApiConfig {
   /// Host base da API REST, ex.: https://seu-host.com ou http://192.168.29.3:8080
+  ///  vbv bhqaqaq  c
   ///
   /// Configurável em tempo de build via:
   ///   flutter build web --dart-define=API_BASE_URL=https://seu-host.com

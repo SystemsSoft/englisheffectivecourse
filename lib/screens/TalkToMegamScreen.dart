@@ -27,6 +27,17 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   String? _loadError;
   AlunoIaDto? _aluno;
 
+  final _createAccountFormKey = GlobalKey<FormState>();
+  final _nomeController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _stripeCustomerIdController = TextEditingController();
+  final _planoAtivoController = TextEditingController();
+  final _moduloAtualController = TextEditingController(text: 'module1');
+  final _missaoAtualController = TextEditingController(text: '1');
+  final _ultimaSessaoController = TextEditingController();
+  bool _creatingAccount = false;
+  String? _createAccountError;
+
   int? _day;
   String? _topic;
   bool _meganSpeaking = false;
@@ -48,6 +59,13 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   void dispose() {
     _callTimer?.cancel();
     _callService?.hangUp();
+    _nomeController.dispose();
+    _emailController.dispose();
+    _stripeCustomerIdController.dispose();
+    _planoAtivoController.dispose();
+    _moduloAtualController.dispose();
+    _missaoAtualController.dispose();
+    _ultimaSessaoController.dispose();
     super.dispose();
   }
 
@@ -59,27 +77,53 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
       _loadError = null;
     });
     try {
-      var aluno = await _alunoIaService.getAluno(userId);
-      aluno ??= await _alunoIaService.criarAluno(AlunoIaDto(
-        userId: userId,
-        nome: userName,
-        email: userId,
-        stripeCustomerId: '',
-        planoAtivo: '',
-        moduloAtual: 'module1',
-        missaoAtual: '1',
-        ultimaSessao: '',
-      ));
+      final aluno = await _alunoIaService.getAluno(userId);
       if (!mounted) return;
       setState(() {
         _aluno = aluno;
         _loadingAluno = false;
+        if (aluno == null) {
+          _nomeController.text = userName;
+          _emailController.text = userId;
+        }
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _loadError = 'Não foi possível carregar seus dados: $e';
         _loadingAluno = false;
+      });
+    }
+  }
+
+  Future<void> _createAccount() async {
+    if (!_createAccountFormKey.currentState!.validate()) return;
+    setState(() {
+      _creatingAccount = true;
+      _createAccountError = null;
+    });
+    try {
+      final email = _emailController.text.trim();
+      final aluno = await _alunoIaService.criarAluno(AlunoIaDto(
+        userId: email,
+        nome: _nomeController.text.trim(),
+        email: email,
+        stripeCustomerId: _stripeCustomerIdController.text.trim(),
+        planoAtivo: _planoAtivoController.text.trim(),
+        moduloAtual: _moduloAtualController.text.trim(),
+        missaoAtual: _missaoAtualController.text.trim(),
+        ultimaSessao: _ultimaSessaoController.text.trim(),
+      ));
+      if (!mounted) return;
+      setState(() {
+        _aluno = aluno;
+        _creatingAccount = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _createAccountError = 'Não foi possível criar sua conta: $e';
+        _creatingAccount = false;
       });
     }
   }
@@ -302,6 +346,10 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
       );
     }
 
+    if (_aluno == null) {
+      return _buildCreateAccountForm();
+    }
+
     final missao = _aluno?.missaoAtual ?? '1';
     return Center(
       child: Padding(
@@ -334,6 +382,98 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildCreateAccountForm() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      child: Form(
+        key: _createAccountFormKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Icon(Icons.person_add_alt_1_rounded, color: Colors.white70, size: 48),
+            const SizedBox(height: 12),
+            const Text(
+              "Criar conta na Megan",
+              style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              "Antes da primeira chamada, precisamos criar o seu cadastro de aluno na Megan.",
+              style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            _buildFormField(_nomeController, "Nome", validator: _requiredValidator),
+            const SizedBox(height: 12),
+            _buildFormField(_emailController, "Email (userId)", readOnly: true),
+            const SizedBox(height: 12),
+            _buildFormField(_stripeCustomerIdController, "Stripe Customer ID (opcional)"),
+            const SizedBox(height: 12),
+            _buildFormField(_planoAtivoController, "Plano ativo (opcional)"),
+            const SizedBox(height: 12),
+            _buildFormField(_moduloAtualController, "Módulo atual", validator: _requiredValidator),
+            const SizedBox(height: 12),
+            _buildFormField(_missaoAtualController, "Missão (dia) atual", validator: _requiredValidator),
+            const SizedBox(height: 12),
+            _buildFormField(_ultimaSessaoController, "Última sessão (opcional)"),
+            if (_createAccountError != null) ...[
+              const SizedBox(height: 16),
+              Text(_createAccountError!, style: const TextStyle(color: AppColors.redLight), textAlign: TextAlign.center),
+            ],
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: _creatingAccount ? null : _createAccount,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.red,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+              ),
+              child: _creatingAccount
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text("Criar conta"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String? _requiredValidator(String? value) {
+    if (value == null || value.trim().isEmpty) return 'Campo obrigatório';
+    return null;
+  }
+
+  Widget _buildFormField(
+    TextEditingController controller,
+    String label, {
+    bool readOnly = false,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      readOnly: readOnly,
+      validator: validator,
+      style: const TextStyle(color: Colors.white),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: Colors.white54),
+        filled: true,
+        fillColor: Colors.white.withValues(alpha: 0.08),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        errorStyle: const TextStyle(color: AppColors.redLight),
       ),
     );
   }
