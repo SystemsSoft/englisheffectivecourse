@@ -5,7 +5,7 @@ import '../models/aluno_ia_model.dart';
 import '../models/megan_call_state.dart';
 import '../services/aluno_ia_service.dart';
 import '../services/megan_call_service.dart';
-import '../services/translation_service.dart';
+import '../services/gemini_translation_service.dart';
 import '../viewmodels/user_viewmodel.dart';
 import '../app_theme.dart';
 
@@ -18,7 +18,7 @@ class TalkToMegamScreen extends StatefulWidget {
 
 class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   final AlunoIaService _alunoIaService = AlunoIaService();
-  final TranslationService _translationService = TranslationService();
+  final GeminiTranslationService _translationService = GeminiTranslationService();
   MeganCallService? _callService;
 
   static const String _megamAvatarUrl =
@@ -48,6 +48,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   String _meganTranscript = '';
   String? _meganTranslation;
   bool _translating = false;
+  String? _translateError;
   bool _muted = false;
   String? _callError;
 
@@ -163,6 +164,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
       _meganTranscript = '';
       _meganTranslation = null;
       _translating = false;
+      _translateError = null;
       _meganThinking = false;
     });
 
@@ -198,9 +200,9 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
         setState(() {
           _meganTranscript = text;
           _meganTranslation = null;
+          _translateError = null;
         });
       },
-      onMeganTurnComplete: _translateMeganTurn,
       onClosed: () {
         if (!mounted) return;
         _finishCall();
@@ -228,16 +230,29 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     });
   }
 
-  Future<void> _translateMeganTurn(String finalText) async {
-    setState(() => _translating = true);
-    final translation = await _translationService.translate(finalText);
-    if (!mounted) return;
+  Future<void> _onTranslatePressed() async {
+    final textToTranslate = _meganTranscript;
+    if (textToTranslate.isEmpty || _translating) return;
     setState(() {
-      _translating = false;
-      // Só aplica se o texto da Megan não tiver mudado nesse meio tempo
-      // (evita mostrar tradução de uma rodada já superada).
-      if (_meganTranscript == finalText) _meganTranslation = translation;
+      _translating = true;
+      _translateError = null;
     });
+    try {
+      final translation = await _translationService.translate(textToTranslate);
+      if (!mounted) return;
+      setState(() {
+        _translating = false;
+        // Só aplica se o texto da Megan não tiver mudado nesse meio tempo
+        // (evita mostrar tradução de uma rodada já superada).
+        if (_meganTranscript == textToTranslate) _meganTranslation = translation;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _translating = false;
+        _translateError = '$e';
+      });
+    }
   }
 
   Future<void> _hangUp() async {
@@ -730,21 +745,49 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
                 _meganTranscript,
                 style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500, height: 1.3),
               ),
-              const SizedBox(height: 6),
-              if (_translating)
-                const Text(
-                  "Traduzindo...",
-                  style: TextStyle(color: Colors.white38, fontSize: 12, fontStyle: FontStyle.italic),
-                )
-              else if (_meganTranslation != null)
+              const SizedBox(height: 8),
+              if (_meganTranslation != null)
                 Text(
                   _meganTranslation!,
                   style: const TextStyle(color: Colors.white54, fontSize: 13, fontStyle: FontStyle.italic),
                 )
               else
-                const Text(
-                  "Tradução indisponível",
-                  style: TextStyle(color: Colors.white24, fontSize: 12, fontStyle: FontStyle.italic),
+                InkWell(
+                  onTap: _translating ? null : _onTranslatePressed,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_translating)
+                          const SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54),
+                          )
+                        else
+                          const Icon(Icons.translate_rounded, color: AppColors.redLight, size: 16),
+                        const SizedBox(width: 6),
+                        Text(
+                          _translating ? "Traduzindo..." : "Traduzir",
+                          style: const TextStyle(
+                            color: AppColors.redLight,
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              if (_translateError != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    "Não foi possível traduzir: $_translateError",
+                    style: const TextStyle(color: AppColors.redLight, fontSize: 11),
+                  ),
                 ),
             ] else if (_meganThinking) ...[
               const Text(

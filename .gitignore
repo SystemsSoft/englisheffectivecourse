@@ -23,6 +23,10 @@ migrate_working_dir/
 # is commented out by default.
 #.vscode/
 
+# Config local com segredos de teste (ex: chave da Gemini para testar o
+# botão "Traduzir" da tela da Megan). Nunca deve ir para o controle de versão.
+lib/local_config.dart
+
 # Flutter/Dart/Pub related
 **/doc/api/
 **/ios/Flutter/.last_build_id
