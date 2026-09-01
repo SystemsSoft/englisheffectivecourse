@@ -39,4 +39,22 @@ class AlunoIaService {
     }
     throw Exception('Erro ao criar aluno na Megan (${response.statusCode}).');
   }
+
+  /// Avança a missão (dia) do aluno. Só deve ser chamado quando o aluno
+  /// completa a chamada de voz inteira (15 minutos) — nunca ao desligar
+  /// antes do tempo.
+  Future<AlunoIaDto> avancarMissao(String userId) async {
+    final uri = Uri.parse(
+      '${ApiConfig.baseUrl}/aluno-ia/${Uri.encodeComponent(userId)}/avancar-missao',
+    );
+    final response = await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+    );
+
+    if (response.statusCode == 200) {
+      return AlunoIaDto.fromJson(jsonDecode(response.body));
+    }
+    throw Exception('Erro ao avançar missão (${response.statusCode}).');
+  }
 }

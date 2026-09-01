@@ -47,8 +47,10 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   bool _muted = false;
   String? _callError;
 
+  static const int _callDurationLimitSeconds = 15 * 60;
+
   Timer? _callTimer;
-  int _callDurationSeconds = 0;
+  int _callSecondsRemaining = _callDurationLimitSeconds;
 
   @override
   void initState() {
@@ -113,16 +115,24 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   }
 
   void _startCallTimer() {
-    _callDurationSeconds = 0;
+    _callSecondsRemaining = _callDurationLimitSeconds;
     _callTimer?.cancel();
     _callTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) setState(() => _callDurationSeconds++);
+      if (!mounted) return;
+      if (_callSecondsRemaining <= 0) {
+        timer.cancel();
+        // Chamada atingiu os 15 minutos — encerra automaticamente e só
+        // aqui avança a missão (nunca em desligamento manual antes do tempo).
+        _completeCallAndAdvanceMission();
+        return;
+      }
+      setState(() => _callSecondsRemaining--);
     });
   }
 
   String get _formattedCallDuration {
-    final minutes = (_callDurationSeconds ~/ 60).toString().padLeft(2, '0');
-    final seconds = (_callDurationSeconds % 60).toString().padLeft(2, '0');
+    final minutes = (_callSecondsRemaining ~/ 60).toString().padLeft(2, '0');
+    final seconds = (_callSecondsRemaining % 60).toString().padLeft(2, '0');
     return "$minutes:$seconds";
   }
 
@@ -234,6 +244,21 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   Future<void> _hangUp() async {
     await _callService?.hangUp();
     _finishCall();
+  }
+
+  /// Chamado só quando os 15 minutos são completados de fato — avança a
+  /// missão do aluno antes de encerrar a chamada.
+  Future<void> _completeCallAndAdvanceMission() async {
+    final userId = _meganUserId;
+    if (userId != null) {
+      try {
+        await _alunoIaService.avancarMissao(userId);
+      } catch (_) {
+        // Não bloqueia o encerramento da chamada por causa disso — o aluno
+        // já completou os 15 minutos mesmo que o avanço da missão falhe.
+      }
+    }
+    await _hangUp();
   }
 
   void _toggleMute() {
