@@ -5,7 +5,9 @@ import '../models/aluno_ia_model.dart';
 import '../models/megan_call_state.dart';
 import '../services/aluno_ia_service.dart';
 import '../services/megan_call_service.dart';
+import '../services/megan_user_id_store.dart';
 import '../services/gemini_translation_service.dart';
+import '../utils/ulid.dart';
 import '../viewmodels/user_viewmodel.dart';
 import '../app_theme.dart';
 
@@ -18,6 +20,7 @@ class TalkToMegamScreen extends StatefulWidget {
 
 class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   final AlunoIaService _alunoIaService = AlunoIaService();
+  final MeganUserIdStore _userIdStore = MeganUserIdStore();
   final GeminiTranslationService _translationService = GeminiTranslationService();
   MeganCallService? _callService;
 
@@ -28,16 +31,9 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   String? _loadError;
   AlunoIaDto? _aluno;
 
-  final _createAccountFormKey = GlobalKey<FormState>();
-  final _nomeController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _stripeCustomerIdController = TextEditingController();
-  final _planoAtivoController = TextEditingController();
-  final _moduloAtualController = TextEditingController(text: 'module1');
-  final _missaoAtualController = TextEditingController(text: '1');
-  final _ultimaSessaoController = TextEditingController();
-  bool _creatingAccount = false;
-  String? _createAccountError;
+  /// userId (ULID) do aluno na Megan — gerado e persistido localmente na
+  /// primeira vez, reutilizado nas próximas (ver [MeganUserIdStore]).
+  String? _meganUserId;
 
   int? _day;
   String? _topic;
@@ -54,8 +50,6 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   Timer? _callTimer;
   int _callDurationSeconds = 0;
 
-  String get _userId => context.read<UserViewModel>().user!.email;
-
   @override
   void initState() {
     super.initState();
@@ -66,71 +60,54 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   void dispose() {
     _callTimer?.cancel();
     _callService?.hangUp();
-    _nomeController.dispose();
-    _emailController.dispose();
-    _stripeCustomerIdController.dispose();
-    _planoAtivoController.dispose();
-    _moduloAtualController.dispose();
-    _missaoAtualController.dispose();
-    _ultimaSessaoController.dispose();
     super.dispose();
   }
 
+  /// Busca o cadastro do aluno na Megan. Se o aluno logado ainda não tiver
+  /// um userId (ULID) salvo localmente, gera um novo e já cria o cadastro
+  /// automaticamente no backend — sem exibir formulário nenhum.
   Future<void> _loadAluno() async {
-    final userId = _userId;
-    final userName = context.read<UserViewModel>().user!.name;
+    final user = context.read<UserViewModel>().user!;
     setState(() {
       _loadingAluno = true;
       _loadError = null;
     });
     try {
-      final aluno = await _alunoIaService.getAluno(userId);
+      var userId = await _userIdStore.getUserId(user.email);
+
+      AlunoIaDto? aluno;
+      if (userId != null) {
+        aluno = await _alunoIaService.getAluno(userId);
+      }
+
+      if (aluno == null) {
+        // Primeira vez do aluno (sem userId salvo) ou o registro sumiu do
+        // backend apesar de já termos um userId local: (re)criar.
+        userId ??= Ulid.generate();
+        aluno = await _alunoIaService.criarAluno(AlunoIaDto(
+          userId: userId,
+          nome: user.name,
+          email: user.email,
+          stripeCustomerId: '',
+          planoAtivo: '',
+          moduloAtual: 'module1',
+          missaoAtual: '1',
+          ultimaSessao: '',
+        ));
+        await _userIdStore.saveUserId(user.email, userId);
+      }
+
       if (!mounted) return;
       setState(() {
+        _meganUserId = userId;
         _aluno = aluno;
         _loadingAluno = false;
-        if (aluno == null) {
-          _nomeController.text = userName;
-          _emailController.text = userId;
-        }
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _loadError = 'Não foi possível carregar seus dados: $e';
         _loadingAluno = false;
-      });
-    }
-  }
-
-  Future<void> _createAccount() async {
-    if (!_createAccountFormKey.currentState!.validate()) return;
-    setState(() {
-      _creatingAccount = true;
-      _createAccountError = null;
-    });
-    try {
-      final email = _emailController.text.trim();
-      final aluno = await _alunoIaService.criarAluno(AlunoIaDto(
-        userId: email,
-        nome: _nomeController.text.trim(),
-        email: email,
-        stripeCustomerId: _stripeCustomerIdController.text.trim(),
-        planoAtivo: _planoAtivoController.text.trim(),
-        moduloAtual: _moduloAtualController.text.trim(),
-        missaoAtual: _missaoAtualController.text.trim(),
-        ultimaSessao: _ultimaSessaoController.text.trim(),
-      ));
-      if (!mounted) return;
-      setState(() {
-        _aluno = aluno;
-        _creatingAccount = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _createAccountError = 'Não foi possível criar sua conta: $e';
-        _creatingAccount = false;
       });
     }
   }
@@ -168,7 +145,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     });
 
     final service = MeganCallService(
-      userId: _userId,
+      userId: _meganUserId!,
       onSessionReady: (day, topic) {
         if (!mounted) return;
         setState(() {
@@ -396,10 +373,6 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
       );
     }
 
-    if (_aluno == null) {
-      return _buildCreateAccountForm();
-    }
-
     final missao = _aluno?.missaoAtual ?? '1';
     return Center(
       child: Padding(
@@ -432,98 +405,6 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildCreateAccountForm() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      child: Form(
-        key: _createAccountFormKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Icon(Icons.person_add_alt_1_rounded, color: Colors.white70, size: 48),
-            const SizedBox(height: 12),
-            const Text(
-              "Criar conta na Megan",
-              style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              "Antes da primeira chamada, precisamos criar o seu cadastro de aluno na Megan.",
-              style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            _buildFormField(_nomeController, "Nome", validator: _requiredValidator),
-            const SizedBox(height: 12),
-            _buildFormField(_emailController, "Email (userId)", readOnly: true),
-            const SizedBox(height: 12),
-            _buildFormField(_stripeCustomerIdController, "Stripe Customer ID (opcional)"),
-            const SizedBox(height: 12),
-            _buildFormField(_planoAtivoController, "Plano ativo (opcional)"),
-            const SizedBox(height: 12),
-            _buildFormField(_moduloAtualController, "Módulo atual", validator: _requiredValidator),
-            const SizedBox(height: 12),
-            _buildFormField(_missaoAtualController, "Missão (dia) atual", validator: _requiredValidator),
-            const SizedBox(height: 12),
-            _buildFormField(_ultimaSessaoController, "Última sessão (opcional)"),
-            if (_createAccountError != null) ...[
-              const SizedBox(height: 16),
-              Text(_createAccountError!, style: const TextStyle(color: AppColors.redLight), textAlign: TextAlign.center),
-            ],
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _creatingAccount ? null : _createAccount,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.red,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-              ),
-              child: _creatingAccount
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Text("Criar conta"),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String? _requiredValidator(String? value) {
-    if (value == null || value.trim().isEmpty) return 'Campo obrigatório';
-    return null;
-  }
-
-  Widget _buildFormField(
-    TextEditingController controller,
-    String label, {
-    bool readOnly = false,
-    String? Function(String?)? validator,
-  }) {
-    return TextFormField(
-      controller: controller,
-      readOnly: readOnly,
-      validator: validator,
-      style: const TextStyle(color: Colors.white),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: const TextStyle(color: Colors.white54),
-        filled: true,
-        fillColor: Colors.white.withValues(alpha: 0.08),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        errorStyle: const TextStyle(color: AppColors.redLight),
       ),
     );
   }
