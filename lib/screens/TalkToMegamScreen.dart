@@ -21,8 +21,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   final GeminiTranslationService _translationService = GeminiTranslationService();
   MeganCallService? _callService;
 
-  static const String _megamAvatarUrl =
-      'https://repo-english-class.s3.us-east-2.amazonaws.com/lessons/perfil_image.png';
+  static const String _megamAvatarAsset = 'assets/logo-megan.jpeg';
 
   MeganCallState _state = MeganCallState.idle;
   bool _loadingAluno = true;
@@ -365,18 +364,11 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
         Container(
           width: 140,
           height: 140,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 3),
-            boxShadow: [
-              BoxShadow(color: AppColors.navyBlue.withValues(alpha: 0.5), blurRadius: 20, spreadRadius: 2),
-            ],
-          ),
           child: ClipOval(
-            child: Image.network(
-              _megamAvatarUrl,
+            child: Image.asset(
+              _megamAvatarAsset,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const Icon(Icons.person_rounded, size: 70, color: Colors.white),
+              errorBuilder: (_, __, ___) => const Icon(Icons.person_rounded, size: 80, color: Colors.white),
             ),
           ),
         ),
