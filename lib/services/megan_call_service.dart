@@ -66,6 +66,7 @@ class MeganCallService {
 
   bool _sessionReadyReceived = false;
   bool _closing = false;
+  bool _socketActive = false;
   bool _muted = false;
   final StringBuffer _userTranscript = StringBuffer();
   final StringBuffer _meganTranscript = StringBuffer();
@@ -86,15 +87,24 @@ class MeganCallService {
     final uri = Uri.parse('${ApiConfig.wsBaseUrl}/ws/megan/${Uri.encodeComponent(userId)}');
     final channel = WebSocketChannel.connect(uri);
     _channel = channel;
+    _socketActive = true;
 
     _socketSubscription = channel.stream.listen(
       _handleSocketData,
       onError: (Object error, StackTrace _) {
-        onServerError('Conexão com a Megan perdida: $error');
-        onClosed();
+        _socketActive = false;
+        if (!_closing) {
+          _stopMicAndPlayback();
+          onServerError('Conexão com a Megan perdida: $error');
+          onClosed();
+        }
       },
       onDone: () {
-        if (!_closing) onClosed();
+        _socketActive = false;
+        if (!_closing) {
+          _stopMicAndPlayback();
+          onClosed();
+        }
       },
     );
 
@@ -102,7 +112,7 @@ class MeganCallService {
   }
 
   void _sendAudioChunk(Uint8List pcm16) {
-    if (_muted) return;
+    if (_muted || !_socketActive) return;
     _channel?.sink.add(jsonEncode({
       'realtimeInput': {
         'audio': {
@@ -202,13 +212,23 @@ class MeganCallService {
     }
   }
 
-  /// Encerra a chamada: fecha o socket e libera microfone/alto-falante.
-  Future<void> hangUp() async {
-    _closing = true;
+  /// Cancela a captura de mic e libera o alto-falante. Chamado tanto no
+  /// desligamento manual (hangUp) quanto quando o socket cai sozinho — sem
+  /// isso, a captura continuava mandando áudio para um socket já
+  /// fechado/errado, gerando erros repetidos no console.
+  Future<void> _stopMicAndPlayback() async {
     await _micSubscription?.cancel();
-    await _socketSubscription?.cancel();
     await _micCapture?.stop();
     await _playback.dispose();
+  }
+
+  /// Encerra a chamada: fecha o socket e libera microfone/alto-falante.
+  Future<void> hangUp() async {
+    if (_closing) return;
+    _closing = true;
+    _socketActive = false;
+    await _stopMicAndPlayback();
+    await _socketSubscription?.cancel();
     await _channel?.sink.close();
   }
 }

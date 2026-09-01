@@ -17,7 +17,7 @@ class GeminiTranslationService {
   static const String _dartDefineKey = String.fromEnvironment('GEMINI_API_KEY');
   static final String _apiKey =
       _dartDefineKey.isNotEmpty ? _dartDefineKey : LocalConfig.geminiApiKey;
-  static const String _model = 'gemini-3.6-flash';
+  static const String _model = 'gemini-3.5-flash-lite';
 
   bool get isConfigured => _apiKey.isNotEmpty;
 
