@@ -5,6 +5,7 @@ import '../models/aluno_ia_model.dart';
 import '../models/megan_call_state.dart';
 import '../services/aluno_ia_service.dart';
 import '../services/megan_call_service.dart';
+import '../services/translation_service.dart';
 import '../viewmodels/user_viewmodel.dart';
 import '../app_theme.dart';
 
@@ -17,6 +18,7 @@ class TalkToMegamScreen extends StatefulWidget {
 
 class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   final AlunoIaService _alunoIaService = AlunoIaService();
+  final TranslationService _translationService = TranslationService();
   MeganCallService? _callService;
 
   static const String _megamAvatarUrl =
@@ -41,6 +43,11 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   int? _day;
   String? _topic;
   bool _meganSpeaking = false;
+  bool _meganThinking = false;
+  String _userTranscript = '';
+  String _meganTranscript = '';
+  String? _meganTranslation;
+  bool _translating = false;
   bool _muted = false;
   String? _callError;
 
@@ -150,7 +157,14 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   }
 
   Future<void> _beginCall() async {
-    setState(() => _state = MeganCallState.connecting);
+    setState(() {
+      _state = MeganCallState.connecting;
+      _userTranscript = '';
+      _meganTranscript = '';
+      _meganTranslation = null;
+      _translating = false;
+      _meganThinking = false;
+    });
 
     final service = MeganCallService(
       userId: _userId,
@@ -171,6 +185,22 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
         if (!mounted) return;
         setState(() => _meganSpeaking = speaking);
       },
+      onMeganThinkingChanged: (thinking) {
+        if (!mounted) return;
+        setState(() => _meganThinking = thinking);
+      },
+      onUserTranscriptChanged: (text) {
+        if (!mounted) return;
+        setState(() => _userTranscript = text);
+      },
+      onMeganTranscriptChanged: (text) {
+        if (!mounted) return;
+        setState(() {
+          _meganTranscript = text;
+          _meganTranslation = null;
+        });
+      },
+      onMeganTurnComplete: _translateMeganTurn,
       onClosed: () {
         if (!mounted) return;
         _finishCall();
@@ -194,6 +224,19 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     setState(() {
       _state = MeganCallState.ended;
       _meganSpeaking = false;
+      _meganThinking = false;
+    });
+  }
+
+  Future<void> _translateMeganTurn(String finalText) async {
+    setState(() => _translating = true);
+    final translation = await _translationService.translate(finalText);
+    if (!mounted) return;
+    setState(() {
+      _translating = false;
+      // Só aplica se o texto da Megan não tiver mudado nesse meio tempo
+      // (evita mostrar tradução de uma rodada já superada).
+      if (_meganTranscript == finalText) _meganTranslation = translation;
     });
   }
 
@@ -578,25 +621,9 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
             ),
           ),
         const SizedBox(height: 12),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              _meganSpeaking ? Icons.graphic_eq_rounded : Icons.hearing_rounded,
-              color: _meganSpeaking ? AppColors.navyBlueLight : AppColors.redLight,
-              size: 18,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              _meganSpeaking ? "Megan está falando..." : "Megan está ouvindo você...",
-              style: TextStyle(
-                color: _meganSpeaking ? AppColors.navyBlueLight : AppColors.redLight,
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
+        _buildCallStatusRow(),
+        if (_userTranscript.isNotEmpty || _meganTranscript.isNotEmpty || _meganThinking)
+          _buildTranscriptBox(),
         if (_callError != null)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 8),
@@ -631,6 +658,108 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildCallStatusRow() {
+    final IconData icon;
+    final String label;
+    final Color color;
+    if (_meganSpeaking) {
+      icon = Icons.graphic_eq_rounded;
+      label = "Megan está falando...";
+      color = AppColors.navyBlueLight;
+    } else if (_meganThinking) {
+      icon = Icons.more_horiz_rounded;
+      label = "Megan está pensando...";
+      color = Colors.amberAccent;
+    } else {
+      icon = Icons.hearing_rounded;
+      label = "Megan está ouvindo você...";
+      color = AppColors.redLight;
+    }
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(icon, color: color, size: 18),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.bold),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTranscriptBox() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+      padding: const EdgeInsets.all(16),
+      constraints: const BoxConstraints(maxHeight: 160),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+      ),
+      child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_userTranscript.isNotEmpty) ...[
+              const Text(
+                "VOCÊ DISSE",
+                style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                _userTranscript,
+                style: const TextStyle(color: Colors.white70, fontSize: 13, fontStyle: FontStyle.italic),
+              ),
+              const SizedBox(height: 10),
+            ],
+            if (_meganTranscript.isNotEmpty) ...[
+              const Text(
+                "MEGAN DIZ",
+                style: TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                _meganTranscript,
+                style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500, height: 1.3),
+              ),
+              const SizedBox(height: 6),
+              if (_translating)
+                const Text(
+                  "Traduzindo...",
+                  style: TextStyle(color: Colors.white38, fontSize: 12, fontStyle: FontStyle.italic),
+                )
+              else if (_meganTranslation != null)
+                Text(
+                  _meganTranslation!,
+                  style: const TextStyle(color: Colors.white54, fontSize: 13, fontStyle: FontStyle.italic),
+                )
+              else
+                const Text(
+                  "Tradução indisponível",
+                  style: TextStyle(color: Colors.white24, fontSize: 12, fontStyle: FontStyle.italic),
+                ),
+            ] else if (_meganThinking) ...[
+              const Text(
+                "MEGAN DIZ",
+                style: TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1),
+              ),
+              const SizedBox(height: 2),
+              const Text(
+                "...",
+                style: TextStyle(color: Colors.white54, fontSize: 15, fontWeight: FontWeight.w500),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 

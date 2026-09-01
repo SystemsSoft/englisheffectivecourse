@@ -16,6 +16,10 @@ class MeganCallService {
     required this.onServerError,
     required this.onMeganSpeakingChanged,
     required this.onClosed,
+    this.onMeganThinkingChanged,
+    this.onUserTranscriptChanged,
+    this.onMeganTranscriptChanged,
+    this.onMeganTurnComplete,
   });
 
   final String userId;
@@ -33,6 +37,27 @@ class MeganCallService {
   /// Chamado quando o socket é fechado (pelo servidor ou pelo aluno).
   final void Function() onClosed;
 
+  /// Chamado quando o aluno terminou de falar e a Megan ainda não começou a
+  /// responder (nem em texto nem em áudio) — útil para um indicador de
+  /// "pensando". Depende do backend habilitar transcrição na Gemini; se não
+  /// habilitar, este callback simplesmente nunca dispara com `true`.
+  final void Function(bool thinking)? onMeganThinkingChanged;
+
+  /// Transcrição incremental do que o aluno disse na rodada atual. Só chega
+  /// se o backend tiver habilitado `inputAudioTranscription` no setup da
+  /// Gemini; caso contrário nunca é chamado.
+  final void Function(String textSoFar)? onUserTranscriptChanged;
+
+  /// Transcrição incremental do que a Megan está dizendo na rodada atual.
+  /// Só chega se o backend tiver habilitado `outputAudioTranscription` no
+  /// setup da Gemini; caso contrário nunca é chamado.
+  final void Function(String textSoFar)? onMeganTranscriptChanged;
+
+  /// Chamado quando a Megan termina uma rodada de fala (`turnComplete`), com
+  /// o texto completo que ela disse nessa rodada — momento ideal para pedir
+  /// a tradução, em vez de traduzir cada fragmento incremental.
+  final void Function(String finalText)? onMeganTurnComplete;
+
   WebSocketChannel? _channel;
   StreamSubscription? _socketSubscription;
   StreamSubscription? _micSubscription;
@@ -42,6 +67,8 @@ class MeganCallService {
   bool _sessionReadyReceived = false;
   bool _closing = false;
   bool _muted = false;
+  final StringBuffer _userTranscript = StringBuffer();
+  final StringBuffer _meganTranscript = StringBuffer();
 
   /// Silencia/reativa o envio de áudio do microfone para a Megan. O
   /// microfone continua capturando (não fecha a track), só paramos de
@@ -125,7 +152,28 @@ class MeganCallService {
     if (serverContent['interrupted'] == true) {
       _playback.clearQueue();
       onMeganSpeakingChanged(false);
+      onMeganThinkingChanged?.call(false);
       return;
+    }
+
+    // Transcrição do que o aluno disse: chega enquanto ele ainda está
+    // falando, antes de qualquer resposta da Megan — é o sinal de que a
+    // Megan "ouviu" o aluno e está prestes a processar a resposta.
+    final inputTranscription = serverContent['inputTranscription'] as Map<String, dynamic>?;
+    final inputPiece = inputTranscription?['text'] as String?;
+    if (inputPiece != null && inputPiece.isNotEmpty) {
+      _userTranscript.write(inputPiece);
+      onUserTranscriptChanged?.call(_userTranscript.toString());
+      onMeganThinkingChanged?.call(true);
+    }
+
+    // Transcrição do que a Megan está dizendo, em paralelo ao áudio.
+    final outputTranscription = serverContent['outputTranscription'] as Map<String, dynamic>?;
+    final outputPiece = outputTranscription?['text'] as String?;
+    if (outputPiece != null && outputPiece.isNotEmpty) {
+      _meganTranscript.write(outputPiece);
+      onMeganTranscriptChanged?.call(_meganTranscript.toString());
+      onMeganThinkingChanged?.call(false);
     }
 
     final parts = (serverContent['modelTurn']
@@ -138,10 +186,19 @@ class MeganCallService {
         playedSomething = true;
       }
     }
-    if (playedSomething) onMeganSpeakingChanged(true);
+    if (playedSomething) {
+      onMeganSpeakingChanged(true);
+      onMeganThinkingChanged?.call(false);
+    }
 
     if (serverContent['turnComplete'] == true) {
       onMeganSpeakingChanged(false);
+      onMeganThinkingChanged?.call(false);
+      final finalText = _meganTranscript.toString();
+      if (finalText.isNotEmpty) onMeganTurnComplete?.call(finalText);
+      // Nova rodada: limpa os acumuladores para a próxima fala do aluno.
+      _userTranscript.clear();
+      _meganTranscript.clear();
     }
   }
 
