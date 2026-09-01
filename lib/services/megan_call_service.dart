@@ -111,6 +111,27 @@ class MeganCallService {
     _micSubscription = micCapture.onChunk.listen(_sendAudioChunk);
   }
 
+  /// Manda uma saudação de texto assim que a sessão conecta, para a Megan
+  /// "atender" a ligação com uma resposta natural — sem esperar o aluno
+  /// falar primeiro. Usa `clientContent` (turno de texto), que é diferente
+  /// de `realtimeInput.audio` e não passa pelo reconhecimento de voz, então
+  /// não aparece na transcrição do aluno.
+  void _sendGreeting() {
+    _channel?.sink.add(jsonEncode({
+      'clientContent': {
+        'turns': [
+          {
+            'role': 'user',
+            'parts': [
+              {'text': 'Hi!'},
+            ],
+          },
+        ],
+        'turnComplete': true,
+      },
+    }));
+  }
+
   void _sendAudioChunk(Uint8List pcm16) {
     if (_muted || !_socketActive) return;
     _channel?.sink.add(jsonEncode({
@@ -144,6 +165,10 @@ class MeganCallService {
       _sessionReadyReceived = true;
       if (msg['type'] == 'session_ready') {
         onSessionReady(msg['day'] as int, msg['topic'] as String);
+        // Dispara a Megan a "atender" a ligação: manda uma saudação em
+        // segundo plano, como se o aluno tivesse dito "Hi!" assim que a
+        // chamada conectou.
+        _sendGreeting();
         return;
       }
       if (msg['type'] == 'error') {

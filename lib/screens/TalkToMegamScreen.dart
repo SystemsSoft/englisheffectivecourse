@@ -5,6 +5,7 @@ import '../models/aluno_ia_model.dart';
 import '../models/megan_call_state.dart';
 import '../services/aluno_ia_service.dart';
 import '../services/megan_call_service.dart';
+import '../services/megan_ringback_player.dart';
 import '../services/megan_user_id_store.dart';
 import '../services/gemini_translation_service.dart';
 import '../utils/ulid.dart';
@@ -22,6 +23,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   final AlunoIaService _alunoIaService = AlunoIaService();
   final MeganUserIdStore _userIdStore = MeganUserIdStore();
   final GeminiTranslationService _translationService = GeminiTranslationService();
+  final MeganRingbackPlayer _ringback = MeganRingbackPlayer();
   MeganCallService? _callService;
 
   static const String _megamAvatarAsset = 'assets/logo-megan.jpeg';
@@ -62,6 +64,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   void dispose() {
     _callTimer?.cancel();
     _callService?.hangUp();
+    _ringback.stop();
     super.dispose();
   }
 
@@ -156,14 +159,16 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
 
     final service = MeganCallService(
       userId: _meganUserId!,
-      onSessionReady: (day, topic) {
+      onSessionReady: (day, topic) async {
         if (!mounted) return;
         setState(() {
           _day = day;
           _topic = topic;
-          _state = MeganCallState.inCall;
+          _state = MeganCallState.ringing;
         });
-        _startCallTimer();
+        // Toca o tom de "chamando" enquanto a saudação (mandada em segundo
+        // plano pelo MeganCallService) ainda não teve resposta.
+        await _ringback.start();
       },
       onServerError: (message) {
         if (!mounted) return;
@@ -171,6 +176,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
       },
       onMeganSpeakingChanged: (speaking) {
         if (!mounted) return;
+        if (speaking) _handleMeganAnswered();
         setState(() => _meganSpeaking = speaking);
       },
       onMeganThinkingChanged: (thinking) {
@@ -183,6 +189,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
       },
       onMeganTranscriptChanged: (text) {
         if (!mounted) return;
+        if (text.isNotEmpty) _handleMeganAnswered();
         setState(() {
           _meganTranscript = text;
           _meganTranslation = null;
@@ -200,6 +207,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
       await service.start();
     } catch (e) {
       if (!mounted) return;
+      await _ringback.stop();
       setState(() {
         _callError = 'Não foi possível acessar o microfone: $e';
         _state = MeganCallState.idle;
@@ -207,8 +215,19 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     }
   }
 
+  /// Chamado assim que a Megan dá o primeiro sinal de resposta (áudio ou
+  /// transcrição) — "atende" a ligação de fato: para o tom de chamando,
+  /// entra na tela de chamada e só agora começa a contar os 15 minutos.
+  void _handleMeganAnswered() {
+    if (_state != MeganCallState.ringing) return;
+    _ringback.stop();
+    setState(() => _state = MeganCallState.inCall);
+    _startCallTimer();
+  }
+
   void _finishCall() {
     _callTimer?.cancel();
+    _ringback.stop();
     setState(() {
       _state = MeganCallState.ended;
       _meganSpeaking = false;
@@ -333,6 +352,8 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
         return _buildPermissionStep();
       case MeganCallState.connecting:
         return _buildConnecting();
+      case MeganCallState.ringing:
+        return _buildRinging();
       case MeganCallState.inCall:
         return _buildInCall();
       case MeganCallState.ended:
@@ -494,6 +515,39 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
           SizedBox(height: 16),
           Text("Conectando com a Megan...", style: TextStyle(color: Colors.white70)),
         ],
+      ),
+    );
+  }
+
+  Widget _buildRinging() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildAvatar(pulsing: true, ringColor: AppColors.navyBlueLight),
+            const SizedBox(height: 24),
+            const Text("Megan", style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.call_rounded, color: Colors.white54, size: 16),
+                SizedBox(width: 6),
+                Text("Chamando...", style: TextStyle(color: Colors.white54, fontSize: 14)),
+              ],
+            ),
+            const SizedBox(height: 40),
+            _CallActionButton(
+              icon: Icons.call_end_rounded,
+              label: "Cancelar",
+              backgroundColor: AppColors.red,
+              iconColor: Colors.white,
+              onPressed: _hangUp,
+            ),
+          ],
+        ),
       ),
     );
   }
