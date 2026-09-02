@@ -115,12 +115,10 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
         await _userIdStore.saveUserId(user.email, userId);
       }
 
-      // Só na missão 1 o aluno chama a Megan de graça; a partir da missão 2
-      // em diante precisa ter assinatura ativa.
-      AssinaturaStatusDto? assinatura;
-      if (aluno.missaoAtual != '1') {
-        assinatura = await _alunoIaService.getAssinaturaStatus(userId!);
-      }
+      // Busca sempre (não só a partir da missão 2): além de liberar
+      // "Chamar a Megan", também decide se mostra "Aceitar Missão"
+      // (escondido quando o aluno já tem assinatura ativa).
+      final assinatura = await _alunoIaService.getAssinaturaStatus(userId!);
 
       if (!mounted) return;
       setState(() {
@@ -144,8 +142,18 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     final aluno = _aluno;
     if (aluno == null) return false;
     if (aluno.missaoAtual == '1') return true;
-    return _assinaturaStatus?.ativa ?? false;
+    return _hasActiveSubscription;
   }
+
+  /// True quando o aluno já tem assinatura ativa (statusAssinatura == ATIVA
+  /// no backend).
+  bool get _hasActiveSubscription => _assinaturaStatus?.ativa ?? false;
+
+  /// Mostra o botão "Aceitar Missão" só quando faz sentido: o aluno já
+  /// passou da missão 1 (onde o acesso é livre) e ainda não tem assinatura
+  /// ativa.
+  bool get _shouldShowAcceptMission =>
+      !_hasActiveSubscription && _aluno?.missaoAtual != '1';
 
   void _startCallTimer() {
     _callSecondsRemaining = _callDurationLimitSeconds;
@@ -195,7 +203,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   /// botão "Chamar a Megan" sem precisar recarregar a tela.
   void _startSubscriptionPolling() {
     final userId = _meganUserId;
-    if (userId == null || (_assinaturaStatus?.ativa ?? false)) return;
+    if (userId == null || _hasActiveSubscription) return;
 
     _subscriptionPollTimer?.cancel();
     setState(() => _checkingSubscription = true);
@@ -538,21 +546,23 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
                 style: TextStyle(color: Colors.white54, fontSize: 13, height: 1.4),
                 textAlign: TextAlign.center,
               ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _acceptMission,
-                icon: const Icon(Icons.flag_rounded),
-                label: const Text("Aceitar Missão"),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  side: BorderSide(color: Colors.white.withValues(alpha: 0.4)),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+            if (_shouldShowAcceptMission) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _acceptMission,
+                  icon: const Icon(Icons.flag_rounded),
+                  label: const Text("Aceitar Missão"),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: BorderSide(color: Colors.white.withValues(alpha: 0.4)),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                  ),
                 ),
               ),
-            ),
+            ],
             if (_checkingSubscription) ...[
               const SizedBox(height: 16),
               Row(
