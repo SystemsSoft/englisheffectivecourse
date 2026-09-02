@@ -9,13 +9,26 @@ import 'package:web/web.dart' as web;
 const int _kMicSampleRate = 16000;
 const int _kPlaybackSampleRate = 24000;
 
+/// Envelope das mensagens que o worklet manda via port.postMessage: ou um
+/// chunk de áudio, ou um evento de VAD (voice activity detection) local.
+extension type _WorkletMessage._(JSObject _) implements JSObject {
+  external JSArrayBuffer? get audio;
+  external JSString? get vad;
+}
+
 class MeganMicCapture {
   web.MediaStream? _mediaStream;
   web.AudioContext? _audioContext;
   web.AudioWorkletNode? _workletNode;
   final _chunkController = StreamController<Uint8List>.broadcast();
+  final _speechActivityController = StreamController<bool>.broadcast();
 
   Stream<Uint8List> get onChunk => _chunkController.stream;
+
+  /// Emite `true` quando o VAD local detecta que o aluno voltou a falar, e
+  /// `false` quando detecta silêncio sustentado (fim de fala) — sinal
+  /// puramente local, não depende de nada vindo do servidor/Gemini.
+  Stream<bool> get onSpeechActivity => _speechActivityController.stream;
 
   /// Pede permissão de microfone e inicia a captura PCM16 a 16kHz.
   /// Lança [DOMException] se o usuário negar a permissão.
@@ -46,9 +59,19 @@ class MeganMicCapture {
 
     node.port.onmessage = ((web.MessageEvent event) {
       final data = event.data;
-      if (data.isA<JSArrayBuffer>()) {
-        final buffer = (data as JSArrayBuffer).toDart;
-        _chunkController.add(buffer.asUint8List());
+      if (data == null || !data.isA<JSObject>()) return;
+      final msg = data as _WorkletMessage;
+
+      final audio = msg.audio;
+      if (audio != null) {
+        _chunkController.add(audio.toDart.asUint8List());
+      }
+
+      final vad = msg.vad?.toDart;
+      if (vad == 'speech_start') {
+        _speechActivityController.add(true);
+      } else if (vad == 'speech_end') {
+        _speechActivityController.add(false);
       }
     }).toJS;
 
@@ -66,6 +89,7 @@ class MeganMicCapture {
     await _audioContext?.close().toDart;
     _audioContext = null;
     await _chunkController.close();
+    await _speechActivityController.close();
   }
 }
 

@@ -61,6 +61,7 @@ class MeganCallService {
   WebSocketChannel? _channel;
   StreamSubscription? _socketSubscription;
   StreamSubscription? _micSubscription;
+  StreamSubscription<bool>? _vadSubscription;
   MeganMicCapture? _micCapture;
   final MeganAudioPlayback _playback = MeganAudioPlayback();
 
@@ -109,6 +110,14 @@ class MeganCallService {
     );
 
     _micSubscription = micCapture.onChunk.listen(_sendAudioChunk);
+
+    // VAD local: dá feedback imediato de "pensando" assim que o áudio
+    // capturado indica silêncio sustentado, sem depender de nenhum sinal
+    // do servidor/Gemini (que só chega se inputAudioTranscription estiver
+    // habilitado no setup, e mesmo assim com a latência real do modelo).
+    _vadSubscription = micCapture.onSpeechActivity.listen((speaking) {
+      onMeganThinkingChanged?.call(!speaking);
+    });
   }
 
   /// Manda uma saudação de texto assim que a sessão conecta, para a Megan
@@ -243,6 +252,7 @@ class MeganCallService {
   /// fechado/errado, gerando erros repetidos no console.
   Future<void> _stopMicAndPlayback() async {
     await _micSubscription?.cancel();
+    await _vadSubscription?.cancel();
     await _micCapture?.stop();
     await _playback.dispose();
   }

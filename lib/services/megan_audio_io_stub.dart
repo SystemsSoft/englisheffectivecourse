@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 class MeganMicCapture {
   Stream<Uint8List> get onChunk => const Stream.empty();
+  Stream<bool> get onSpeechActivity => const Stream.empty();
 
   Future<void> start() {
     throw UnsupportedError(
