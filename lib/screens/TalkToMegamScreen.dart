@@ -651,6 +651,80 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
               ],
             ),
           ),
+          const SizedBox(height: 16),
+          _buildHowItWorksCard(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHowItWorksCard() {
+    const items = [
+      (
+        emoji: '🎯',
+        title: 'Missão de 15 Minutos',
+        desc: 'Entre e converse em tempo real com a M.E.G.A.N. exclusivamente '
+            'sobre o tópico daquele desafio.',
+      ),
+      (
+        emoji: '🔓',
+        title: 'Desbloqueio Progressivo',
+        desc: 'Cumpriu a missão com sucesso? A fase do dia seguinte é '
+            'liberada automaticamente.',
+      ),
+      (
+        emoji: '🏅',
+        title: 'Trilha de Conquistas',
+        desc: 'Quanto mais dias você fala, mais o inglês vira reflexo e mais '
+            'perto você fica de destravar suas medalhas de fluência.',
+      ),
+    ];
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Como funcionam os Desafios Diários?",
+            style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'A sua evolução acontece em missões curtas, no seu próprio ritmo. '
+            'Um "Dia" é uma etapa do seu treino, não uma data no calendário.',
+            style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
+          ),
+          const SizedBox(height: 14),
+          for (final item in items) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(item.emoji, style: const TextStyle(fontSize: 15)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: RichText(
+                    text: TextSpan(
+                      style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
+                      children: [
+                        TextSpan(
+                          text: '${item.title}: ',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                        TextSpan(text: item.desc),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+          ],
         ],
       ),
     );
