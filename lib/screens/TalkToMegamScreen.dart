@@ -54,6 +54,8 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   bool _muted = false;
   String? _callError;
 
+  final ScrollController _transcriptScrollController = ScrollController();
+
   static const int _callDurationLimitSeconds = 15 * 60;
 
   Timer? _callTimer;
@@ -76,6 +78,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     _callService?.hangUp();
     _ringback.stop();
     _subscriptionPollTimer?.cancel();
+    _transcriptScrollController.dispose();
     super.dispose();
   }
 
@@ -275,6 +278,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
       onUserTranscriptChanged: (text) {
         if (!mounted) return;
         setState(() => _userTranscript = text);
+        _scrollTranscriptToBottom();
       },
       onMeganTranscriptChanged: (text) {
         if (!mounted) return;
@@ -284,6 +288,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
           _meganTranslation = null;
           _translateError = null;
         });
+        _scrollTranscriptToBottom();
       },
       onClosed: () {
         if (!mounted) return;
@@ -314,6 +319,20 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     _startCallTimer();
   }
 
+  /// Rola a caixa de transcrição até o fim, para sempre mostrar a última
+  /// linha do que está sendo dito. Espera o frame do setState terminar de
+  /// reconstruir (para o novo texto já contar no maxScrollExtent).
+  void _scrollTranscriptToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_transcriptScrollController.hasClients) return;
+      _transcriptScrollController.animateTo(
+        _transcriptScrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
   void _finishCall() {
     _callTimer?.cancel();
     _ringback.stop();
@@ -340,6 +359,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
         // (evita mostrar tradução de uma rodada já superada).
         if (_meganTranscript == textToTranslate) _meganTranslation = translation;
       });
+      _scrollTranscriptToBottom();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -802,6 +822,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
         border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
       ),
       child: SingleChildScrollView(
+        controller: _transcriptScrollController,
         physics: const BouncingScrollPhysics(),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
