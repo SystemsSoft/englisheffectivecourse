@@ -460,7 +460,13 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     }
   }
 
-  Widget _buildAvatar({bool pulsing = false, Color ringColor = AppColors.navyBlueLight}) {
+  static const Color _neonCyan = Color(0xFF22E5F5);
+
+  Widget _buildAvatar({
+    bool pulsing = false,
+    Color ringColor = AppColors.navyBlueLight,
+    bool neonGlow = false,
+  }) {
     return Stack(
       alignment: Alignment.center,
       children: [
@@ -482,6 +488,19 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
                 ),
               );
             },
+          ),
+        if (neonGlow)
+          Container(
+            width: 168,
+            height: 168,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: _neonCyan, width: 3),
+              boxShadow: [
+                BoxShadow(color: _neonCyan.withValues(alpha: 0.65), blurRadius: 22, spreadRadius: 1),
+                BoxShadow(color: _neonCyan.withValues(alpha: 0.35), blurRadius: 46, spreadRadius: 6),
+              ],
+            ),
           ),
         Container(
           width: 140,
@@ -519,80 +538,214 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     }
 
     final missao = _aluno?.missaoAtual ?? '1';
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildAvatar(),
-            const SizedBox(height: 24),
-            const Text("Megan", style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Text(
-              "Dia $missao • Missão Fluência",
-              style: const TextStyle(color: Colors.white54, fontSize: 14),
-            ),
-            const SizedBox(height: 40),
-            if (_canCallMegan)
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _goToPermissionStep,
-                  icon: const Icon(Icons.call_rounded),
-                  label: const Text("Chamar a Megan"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.red,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                  ),
-                ),
-              )
-            else
-              const Text(
-                "Sua assinatura precisa estar ativa para continuar a partir "
-                "da missão 2. Aceite a missão abaixo para assinar.",
-                style: TextStyle(color: Colors.white54, fontSize: 13, height: 1.4),
-                textAlign: TextAlign.center,
-              ),
-            if (_shouldShowAcceptMission) ...[
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: _acceptMission,
-                  icon: const Icon(Icons.flag_rounded),
-                  label: const Text("Aceitar Missão"),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: BorderSide(color: Colors.white.withValues(alpha: 0.4)),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                  ),
-                ),
-              ),
-            ],
-            if (_checkingSubscription) ...[
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    "Verificando pagamento...",
-                    style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 12),
-                  ),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      child: Column(
+        children: [
+          _buildAvatar(neonGlow: true),
+          const SizedBox(height: 24),
+          const Text(
+            "MEGAN",
+            style: TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: 0.5),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            "Sua Tutora de Simulação de Conversa em Tempo Real",
+            style: TextStyle(color: Colors.white70, fontSize: 14),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            "Dia $missao • Missão Fluência",
+            style: const TextStyle(color: Colors.white54, fontSize: 14),
+          ),
+          const SizedBox(height: 32),
+          if (_canCallMegan)
+            Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(30),
+                boxShadow: [
+                  BoxShadow(color: AppColors.red.withValues(alpha: 0.55), blurRadius: 24, spreadRadius: 1),
                 ],
               ),
-            ],
+              child: ElevatedButton(
+                onPressed: _goToPermissionStep,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.red,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.mic_rounded),
+                    SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        "INICIAR SIMULAÇÃO DE CONVERSA (TEMPO REAL)",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, letterSpacing: 0.3),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            const Text(
+              "Sua assinatura precisa estar ativa para continuar a partir "
+              "da missão 2. Aceite a missão abaixo para assinar.",
+              style: TextStyle(color: Colors.white54, fontSize: 13, height: 1.4),
+              textAlign: TextAlign.center,
+            ),
+          if (_shouldShowAcceptMission) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _acceptMission,
+                icon: const Icon(Icons.flag_rounded),
+                label: const Text("Aceitar Missão"),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  side: BorderSide(color: Colors.white.withValues(alpha: 0.4)),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                ),
+              ),
+            ),
           ],
-        ),
+          if (_checkingSubscription) ...[
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  "Verificando pagamento...",
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 12),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 32),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: _buildDailyChallengesCard()),
+                const SizedBox(width: 12),
+                Expanded(child: _buildImmersionCard()),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Cards puramente decorativos — não há dado real por trás (o backend só
+  // controla uma missão numérica por dia, não 3 simulações separadas).
+  Widget _buildDailyChallengesCard() {
+    const items = [
+      (icon: Icons.mic_rounded, title: '"The Daily Grind" - Simulação 1'),
+      (icon: Icons.coffee_rounded, title: '"Ordering Coffee" - Simulação 2'),
+      (icon: Icons.work_rounded, title: '"Job Interview" - Simulação 3'),
+    ];
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.event_note_rounded, color: AppColors.redLight, size: 18),
+              const SizedBox(width: 8),
+              const Flexible(
+                child: Text(
+                  "Agenda de Desafios Diários",
+                  style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          for (final item in items) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(item.icon, color: Colors.white54, size: 14),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    item.title,
+                    style: const TextStyle(color: Colors.white, fontSize: 11, height: 1.3),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                const Icon(Icons.check_circle_rounded, color: Colors.lightBlueAccent, size: 15),
+              ],
+            ),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: 1,
+                minHeight: 4,
+                backgroundColor: Colors.white12,
+                valueColor: const AlwaysStoppedAnimation(Colors.lightBlueAccent),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildImmersionCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.headset_mic_rounded, color: AppColors.redLight, size: 22),
+          const SizedBox(height: 10),
+          const Text(
+            "Imersão Realista (Tempo Real)",
+            style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            "Treine em cenários autênticos. Receba feedback instantâneo da sua "
+            "pronúncia e fluência.",
+            style: TextStyle(color: Colors.white70, fontSize: 11, height: 1.35),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            "Experiência de imersão total.",
+            style: TextStyle(color: Colors.white70, fontSize: 11, height: 1.35),
+          ),
+        ],
       ),
     );
   }
