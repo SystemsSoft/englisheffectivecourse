@@ -60,6 +60,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   bool _advancingMission = false;
 
   final ScrollController _transcriptScrollController = ScrollController();
+  final ScrollController _dailyChallengesScrollController = ScrollController();
 
   static const int _callDurationLimitSeconds = 15 * 60;
   static const int _finishChallengeUnlockSeconds = 10 * 60;
@@ -85,6 +86,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     _ringback.stop();
     _subscriptionPollTimer?.cancel();
     _transcriptScrollController.dispose();
+    _dailyChallengesScrollController.dispose();
     super.dispose();
   }
 
@@ -679,7 +681,24 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
             ],
           ),
           const SizedBox(height: 14),
-          _buildDailyChallengesContent(),
+          SizedBox(
+            height: 260,
+            child: RawScrollbar(
+              controller: _dailyChallengesScrollController,
+              thumbVisibility: true,
+              interactive: true,
+              thickness: 5,
+              radius: const Radius.circular(8),
+              thumbColor: Colors.white.withValues(alpha: 0.25),
+              trackColor: Colors.white.withValues(alpha: 0.04),
+              trackVisibility: true,
+              child: SingleChildScrollView(
+                controller: _dailyChallengesScrollController,
+                padding: const EdgeInsets.only(right: 12),
+                child: _buildDailyChallengesContent(),
+              ),
+            ),
+          ),
         ],
       ),
     );
