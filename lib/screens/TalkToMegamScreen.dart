@@ -8,8 +8,7 @@ import '../models/megan_call_state.dart';
 import '../services/aluno_ia_service.dart';
 import '../services/megan_call_service.dart';
 import '../services/megan_ringback_player.dart';
-import '../services/megan_user_id_store.dart';
-import '../utils/ulid.dart';
+import '../services/megan_user_resolver.dart';
 import '../viewmodels/user_viewmodel.dart';
 import '../app_theme.dart';
 
@@ -22,7 +21,7 @@ class TalkToMegamScreen extends StatefulWidget {
 
 class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   final AlunoIaService _alunoIaService = AlunoIaService();
-  final MeganUserIdStore _userIdStore = MeganUserIdStore();
+  final MeganUserResolver _userResolver = MeganUserResolver();
   final MeganRingbackPlayer _ringback = MeganRingbackPlayer();
   MeganCallService? _callService;
 
@@ -90,36 +89,12 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
       _loadError = null;
     });
     try {
-      var userId = (user.ulid != null && user.ulid!.isNotEmpty)
-          ? user.ulid
-          : await _userIdStore.getUserId(user.email);
-
-      AlunoIaDto? aluno;
-      if (userId != null) {
-        aluno = await _alunoIaService.getAluno(userId);
-      }
-
-      if (aluno == null) {
-        // Primeira vez do aluno (sem registro no backend):
-        // Cria automaticamente usando o ULID do acesso (ou gera um novo se nulo)
-        userId ??= Ulid.generate();
-        aluno = await _alunoIaService.criarAluno(AlunoIaDto(
-          userId: userId,
-          nome: user.name,
-          email: user.email,
-          stripeCustomerId: '',
-          planoAtivo: '',
-          moduloAtual: 'module1',
-          missaoAtual: '1',
-          ultimaSessao: '',
-        ));
-        await _userIdStore.saveUserId(user.email, userId);
-      }
+      final (userId, aluno) = await _userResolver.resolve(user);
 
       // Busca sempre (não só a partir da missão 2): além de liberar
       // "Chamar a Megan", também decide se mostra "Aceitar Missão"
       // (escondido quando o aluno já tem assinatura ativa).
-      final assinatura = await _alunoIaService.getAssinaturaStatus(userId!);
+      final assinatura = await _alunoIaService.getAssinaturaStatus(userId);
 
       if (!mounted) return;
       setState(() {

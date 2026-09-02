@@ -78,4 +78,30 @@ class AlunoIaService {
     }
     throw Exception('Erro ao verificar assinatura (${response.statusCode}).');
   }
+
+  /// Pede ao backend a URL do Stripe Customer Portal, onde o aluno gerencia
+  /// (troca forma de pagamento) ou cancela a própria assinatura sem
+  /// precisar de login extra. [returnUrl] é para onde a Stripe manda o
+  /// aluno de volta depois que ele sai do portal.
+  Future<String> getPortalAssinaturaUrl(String userId, String returnUrl) async {
+    final uri = Uri.parse(
+      '${ApiConfig.baseUrl}/aluno-ia/${Uri.encodeComponent(userId)}/portal-assinatura',
+    ).replace(queryParameters: {'returnUrl': returnUrl});
+    final response = await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      return data['url'] as String;
+    }
+    if (response.statusCode == 400) {
+      throw Exception('Você ainda não tem uma assinatura ativa.');
+    }
+    if (response.statusCode == 404) {
+      throw Exception('Aluno não encontrado.');
+    }
+    throw Exception('Erro ao abrir o portal de assinatura (${response.statusCode}).');
+  }
 }

@@ -7,6 +7,7 @@ import 'LoginScreen.dart';
 import 'VideoPlayerScreen.dart';
 import 'ListeningScreen.dart';
 import 'TalkToMegamScreen.dart';
+import 'ProfileScreen.dart';
 import '../WordOfTheDayScreen.dart';
 import 'FlashcardsScreen.dart';
 import '../app_theme.dart';
@@ -239,6 +240,15 @@ class _GradientHeader extends StatelessWidget {
               Row(
                 children: [
                   const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.person_outline_rounded, color: Colors.white70),
+                    tooltip: 'Meu Perfil',
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                      );
+                    },
+                  ),
                   IconButton(
                     icon: const Icon(Icons.logout_rounded, color: Colors.white70),
                     tooltip: 'Sair',

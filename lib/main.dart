@@ -1,8 +1,6 @@
 import 'package:englisheffectivecourse/screens/LadinPageScreen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'models/user_model.dart';
-import 'screens/TalkToMegamScreen.dart';
 import 'viewmodels/user_viewmodel.dart';
 import 'viewmodels/upload_viewmodel.dart';
 import 'app_theme.dart';
@@ -26,37 +24,8 @@ class MyApp extends StatelessWidget {
         title: 'English Effective Course',
         theme: AppTheme.light,
         builder: (context, child) => PwaInstallWrapper(child: child!),
-        home: const _MeganUiTestHarness(),
+        home: const LandingPageScreen(),
       ),
     );
-  }
-}
-
-// TEMPORÁRIO: harness só para validar visualmente o novo layout da tela.
-class _MeganUiTestHarness extends StatefulWidget {
-  const _MeganUiTestHarness();
-  @override
-  State<_MeganUiTestHarness> createState() => _MeganUiTestHarnessState();
-}
-
-class _MeganUiTestHarnessState extends State<_MeganUiTestHarness> {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<UserViewModel>().setUser(const User(
-            name: 'Teste UI Claude',
-            email: 'teste-ui-claude@example.com',
-            classCode: 'TEST',
-            className: 'Teste',
-          ));
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final user = context.watch<UserViewModel>().user;
-    if (user == null) return const Scaffold(body: SizedBox());
-    return const TalkToMegamScreen();
   }
 }
