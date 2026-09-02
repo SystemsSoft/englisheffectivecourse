@@ -59,6 +59,11 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   Timer? _callTimer;
   int _callSecondsRemaining = _callDurationLimitSeconds;
 
+  Timer? _subscriptionPollTimer;
+  bool _checkingSubscription = false;
+  static const Duration _subscriptionPollInterval = Duration(seconds: 5);
+  static const int _subscriptionPollMaxAttempts = 120; // ~10 minutos
+
   @override
   void initState() {
     super.initState();
@@ -70,6 +75,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     _callTimer?.cancel();
     _callService?.hangUp();
     _ringback.stop();
+    _subscriptionPollTimer?.cancel();
     super.dispose();
   }
 
@@ -180,7 +186,45 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     });
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
+      _startSubscriptionPolling();
     }
+  }
+
+  /// Depois que o aluno vai para o checkout do Stripe, fica checando em
+  /// segundo plano se a assinatura virou ativa — assim que virar, libera o
+  /// botão "Chamar a Megan" sem precisar recarregar a tela.
+  void _startSubscriptionPolling() {
+    final userId = _meganUserId;
+    if (userId == null || (_assinaturaStatus?.ativa ?? false)) return;
+
+    _subscriptionPollTimer?.cancel();
+    setState(() => _checkingSubscription = true);
+
+    var attempts = 0;
+    _subscriptionPollTimer = Timer.periodic(_subscriptionPollInterval, (timer) async {
+      attempts++;
+      try {
+        final status = await _alunoIaService.getAssinaturaStatus(userId);
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        if (status.ativa) {
+          timer.cancel();
+          setState(() {
+            _assinaturaStatus = status;
+            _checkingSubscription = false;
+          });
+          return;
+        }
+      } catch (_) {
+        // Erro passageiro de rede — tenta de novo no próximo ciclo.
+      }
+      if (attempts >= _subscriptionPollMaxAttempts) {
+        timer.cancel();
+        if (mounted) setState(() => _checkingSubscription = false);
+      }
+    });
   }
 
   Future<void> _beginCall() async {
@@ -509,6 +553,24 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
                 ),
               ),
             ),
+            if (_checkingSubscription) ...[
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    "Verificando pagamento...",
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 12),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
