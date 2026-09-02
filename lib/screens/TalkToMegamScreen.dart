@@ -411,7 +411,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
             colors: [
               Color(0xFF0F142D),
               Color(0xFF182042),
-              Color(0xFF0A0D1F),
+              Color.fromARGB(255, 42, 46, 73),
             ],
           ),
         ),
