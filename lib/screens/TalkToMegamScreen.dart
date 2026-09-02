@@ -9,7 +9,6 @@ import '../services/aluno_ia_service.dart';
 import '../services/megan_call_service.dart';
 import '../services/megan_ringback_player.dart';
 import '../services/megan_user_id_store.dart';
-import '../services/gemini_translation_service.dart';
 import '../utils/ulid.dart';
 import '../viewmodels/user_viewmodel.dart';
 import '../app_theme.dart';
@@ -24,7 +23,6 @@ class TalkToMegamScreen extends StatefulWidget {
 class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   final AlunoIaService _alunoIaService = AlunoIaService();
   final MeganUserIdStore _userIdStore = MeganUserIdStore();
-  final GeminiTranslationService _translationService = GeminiTranslationService();
   final MeganRingbackPlayer _ringback = MeganRingbackPlayer();
   MeganCallService? _callService;
 
@@ -48,15 +46,15 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   bool _meganThinking = false;
   String _userTranscript = '';
   String _meganTranscript = '';
-  String? _meganTranslation;
-  bool _translating = false;
-  String? _translateError;
   bool _muted = false;
   String? _callError;
+  String? _advanceMissionError;
+  bool _advancingMission = false;
 
   final ScrollController _transcriptScrollController = ScrollController();
 
   static const int _callDurationLimitSeconds = 15 * 60;
+  static const int _finishChallengeUnlockSeconds = 10 * 60;
 
   Timer? _callTimer;
   int _callSecondsRemaining = _callDurationLimitSeconds;
@@ -174,6 +172,10 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     });
   }
 
+  /// Libera o atalho "Finalizar Desafio" depois de 10 minutos de chamada.
+  bool get _canFinishChallenge =>
+      (_callDurationLimitSeconds - _callSecondsRemaining) >= _finishChallengeUnlockSeconds;
+
   String get _formattedCallDuration {
     final minutes = (_callSecondsRemaining ~/ 60).toString().padLeft(2, '0');
     final seconds = (_callSecondsRemaining % 60).toString().padLeft(2, '0');
@@ -243,10 +245,8 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
       _state = MeganCallState.connecting;
       _userTranscript = '';
       _meganTranscript = '';
-      _meganTranslation = null;
-      _translating = false;
-      _translateError = null;
       _meganThinking = false;
+      _advanceMissionError = null;
     });
 
     final service = MeganCallService(
@@ -283,11 +283,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
       onMeganTranscriptChanged: (text) {
         if (!mounted) return;
         if (text.isNotEmpty) _handleMeganAnswered();
-        setState(() {
-          _meganTranscript = text;
-          _meganTranslation = null;
-          _translateError = null;
-        });
+        setState(() => _meganTranscript = text);
         _scrollTranscriptToBottom();
       },
       onClosed: () {
@@ -343,50 +339,44 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     });
   }
 
-  Future<void> _onTranslatePressed() async {
-    final textToTranslate = _meganTranscript;
-    if (textToTranslate.isEmpty || _translating) return;
-    setState(() {
-      _translating = true;
-      _translateError = null;
-    });
-    try {
-      final translation = await _translationService.translate(textToTranslate);
-      if (!mounted) return;
-      setState(() {
-        _translating = false;
-        // Só aplica se o texto da Megan não tiver mudado nesse meio tempo
-        // (evita mostrar tradução de uma rodada já superada).
-        if (_meganTranscript == textToTranslate) _meganTranslation = translation;
-      });
-      _scrollTranscriptToBottom();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _translating = false;
-        _translateError = '$e';
-      });
-    }
-  }
-
   Future<void> _hangUp() async {
     await _callService?.hangUp();
     _finishCall();
   }
 
-  /// Chamado só quando os 15 minutos são completados de fato — avança a
+  /// Chamado quando os 15 minutos são completados, ou quando o aluno clica
+  /// em "Finalizar Desafio" (liberado a partir de 10 minutos) — avança a
   /// missão do aluno antes de encerrar a chamada.
   Future<void> _completeCallAndAdvanceMission() async {
-    final userId = _meganUserId;
-    if (userId != null) {
-      try {
-        await _alunoIaService.avancarMissao(userId);
-      } catch (_) {
-        // Não bloqueia o encerramento da chamada por causa disso — o aluno
-        // já completou os 15 minutos mesmo que o avanço da missão falhe.
-      }
-    }
+    await _advanceMission();
     await _hangUp();
+  }
+
+  /// Chama POST /aluno-ia/{userId}/avancar-missao. Não silencia falhas: se
+  /// der erro, guarda a mensagem para mostrar na tela de "chamada
+  /// encerrada" com um botão de tentar de novo — antes o erro era ignorado
+  /// e a missão simplesmente não avançava sem nenhum aviso.
+  Future<void> _advanceMission() async {
+    final userId = _meganUserId;
+    if (userId == null) return;
+    setState(() {
+      _advancingMission = true;
+      _advanceMissionError = null;
+    });
+    try {
+      final atualizado = await _alunoIaService.avancarMissao(userId);
+      if (!mounted) return;
+      setState(() {
+        _aluno = atualizado;
+        _advancingMission = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _advancingMission = false;
+        _advanceMissionError = 'Não foi possível avançar sua missão: $e';
+      });
+    }
   }
 
   void _toggleMute() {
@@ -773,6 +763,14 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
                 iconColor: Colors.white,
                 onPressed: _hangUp,
               ),
+              if (_canFinishChallenge)
+                _CallActionButton(
+                  icon: Icons.flag_circle_rounded,
+                  label: "Finalizar Desafio",
+                  backgroundColor: AppColors.navyBlueLight,
+                  iconColor: Colors.white,
+                  onPressed: _completeCallAndAdvanceMission,
+                ),
             ],
           ),
         ),
@@ -850,50 +848,6 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
                 _meganTranscript,
                 style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500, height: 1.3),
               ),
-              const SizedBox(height: 8),
-              if (_meganTranslation != null)
-                Text(
-                  _meganTranslation!,
-                  style: const TextStyle(color: Colors.white54, fontSize: 13, fontStyle: FontStyle.italic),
-                )
-              else
-                InkWell(
-                  onTap: _translating ? null : _onTranslatePressed,
-                  borderRadius: BorderRadius.circular(8),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (_translating)
-                          const SizedBox(
-                            width: 12,
-                            height: 12,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54),
-                          )
-                        else
-                          const Icon(Icons.translate_rounded, color: AppColors.redLight, size: 16),
-                        const SizedBox(width: 6),
-                        Text(
-                          _translating ? "Traduzindo..." : "Traduzir",
-                          style: const TextStyle(
-                            color: AppColors.redLight,
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              if (_translateError != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    "Não foi possível traduzir: $_translateError",
-                    style: const TextStyle(color: AppColors.redLight, fontSize: 11),
-                  ),
-                ),
             ] else if (_meganThinking) ...[
               const Text(
                 "MEGAN DIZ",
@@ -930,6 +884,25 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
               style: TextStyle(color: Colors.white70, fontSize: 14),
               textAlign: TextAlign.center,
             ),
+            if (_advanceMissionError != null) ...[
+              const SizedBox(height: 16),
+              Text(
+                _advanceMissionError!,
+                style: const TextStyle(color: AppColors.redLight, fontSize: 12),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: _advancingMission ? null : _advanceMission,
+                child: _advancingMission
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54),
+                      )
+                    : const Text("Tentar avançar a missão de novo", style: TextStyle(color: Colors.white70)),
+              ),
+            ],
             const SizedBox(height: 28),
             SizedBox(
               width: double.infinity,
@@ -990,7 +963,11 @@ class _CallActionButton extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 6),
-        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500)),
+        Text(
+          label,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500),
+        ),
       ],
     );
   }
