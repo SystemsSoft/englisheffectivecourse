@@ -555,7 +555,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
           ),
           const SizedBox(height: 6),
           const Text(
-            "Sua Tutora de Simulação de Conversa em Tempo Real",
+            "Inteligência Imersiva de Conversação",
             style: TextStyle(color: Colors.white70, fontSize: 14),
             textAlign: TextAlign.center,
           ),
@@ -845,6 +845,21 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   }
 
   Widget _buildImmersionCard() {
+    const highlights = [
+      (
+        title: 'Interação 100% por voz',
+        desc: 'Fale naturalmente. Ela te escuta e responde em milissegundos.',
+      ),
+      (
+        title: 'Rede de Segurança',
+        desc: 'Travou no vocabulário? Fale em português. A M.E.G.A.N. entende, '
+            'te ensina como falar e retoma o inglês.',
+      ),
+      (
+        title: 'Fale e Ouça',
+        desc: 'Simulação de voz em tempo real, sem digitar.',
+      ),
+    ];
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
@@ -873,6 +888,19 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
             "Experiência de imersão total.",
             style: TextStyle(color: Colors.white70, fontSize: 11, height: 1.35),
           ),
+          const SizedBox(height: 12),
+          for (final item in highlights) ...[
+            Text(
+              item.title,
+              style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              item.desc,
+              style: const TextStyle(color: Colors.white70, fontSize: 11, height: 1.35),
+            ),
+            const SizedBox(height: 10),
+          ],
         ],
       ),
     );
