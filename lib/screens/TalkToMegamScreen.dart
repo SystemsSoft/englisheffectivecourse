@@ -78,7 +78,9 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
       _loadError = null;
     });
     try {
-      var userId = await _userIdStore.getUserId(user.email);
+      var userId = (user.ulid != null && user.ulid!.isNotEmpty)
+          ? user.ulid
+          : await _userIdStore.getUserId(user.email);
 
       AlunoIaDto? aluno;
       if (userId != null) {
@@ -86,8 +88,8 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
       }
 
       if (aluno == null) {
-        // Primeira vez do aluno (sem userId salvo) ou o registro sumiu do
-        // backend apesar de já termos um userId local: (re)criar.
+        // Primeira vez do aluno (sem registro no backend):
+        // Cria automaticamente usando o ULID do acesso (ou gera um novo se nulo)
         userId ??= Ulid.generate();
         aluno = await _alunoIaService.criarAluno(AlunoIaDto(
           userId: userId,

@@ -46,6 +46,7 @@ class _LoginScreenState extends State<LoginScreen> {
               email: aluno.email,
               classCode: aluno.classCode,
               className: aluno.className,
+              ulid: aluno.ulid,
             ),
           );
       Navigator.of(context).pushReplacement(
