@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/aluno_ia_model.dart';
+import '../models/assinatura_status_model.dart';
 import '../models/megan_call_state.dart';
 import '../services/aluno_ia_service.dart';
 import '../services/megan_call_service.dart';
@@ -32,6 +34,9 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   bool _loadingAluno = true;
   String? _loadError;
   AlunoIaDto? _aluno;
+
+  /// Só consultado quando o aluno já passou da missão 1 (ver [_loadAluno]).
+  AssinaturaStatusDto? _assinaturaStatus;
 
   /// userId (ULID) do aluno na Megan — gerado e persistido localmente na
   /// primeira vez, reutilizado nas próximas (ver [MeganUserIdStore]).
@@ -104,10 +109,18 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
         await _userIdStore.saveUserId(user.email, userId);
       }
 
+      // Só na missão 1 o aluno chama a Megan de graça; a partir da missão 2
+      // em diante precisa ter assinatura ativa.
+      AssinaturaStatusDto? assinatura;
+      if (aluno.missaoAtual != '1') {
+        assinatura = await _alunoIaService.getAssinaturaStatus(userId!);
+      }
+
       if (!mounted) return;
       setState(() {
         _meganUserId = userId;
         _aluno = aluno;
+        _assinaturaStatus = assinatura;
         _loadingAluno = false;
       });
     } catch (e) {
@@ -117,6 +130,15 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
         _loadingAluno = false;
       });
     }
+  }
+
+  /// Libera o botão "Chamar a Megan": sempre na missão 1, ou a partir da
+  /// missão 2 apenas se a assinatura estiver ativa.
+  bool get _canCallMegan {
+    final aluno = _aluno;
+    if (aluno == null) return false;
+    if (aluno.missaoAtual == '1') return true;
+    return _assinaturaStatus?.ativa ?? false;
   }
 
   void _startCallTimer() {
@@ -146,6 +168,19 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
       _state = MeganCallState.requestingPermission;
       _callError = null;
     });
+  }
+
+  Future<void> _acceptMission() async {
+    final baseUri = Uri.parse('https://buy.stripe.com/test_8x2aEWbdj4E12mG3wY9AA01');
+    // client_reference_id permite ao webhook do Stripe identificar qual
+    // aluno (userId/ULID na Megan) completou o pagamento.
+    final uri = baseUri.replace(queryParameters: {
+      ...baseUri.queryParameters,
+      'client_reference_id': _meganUserId ?? '',
+    });
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   Future<void> _beginCall() async {
@@ -437,15 +472,38 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
               style: const TextStyle(color: Colors.white54, fontSize: 14),
             ),
             const SizedBox(height: 40),
+            if (_canCallMegan)
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _goToPermissionStep,
+                  icon: const Icon(Icons.call_rounded),
+                  label: const Text("Chamar a Megan"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.red,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                  ),
+                ),
+              )
+            else
+              const Text(
+                "Sua assinatura precisa estar ativa para continuar a partir "
+                "da missão 2. Aceite a missão abaixo para assinar.",
+                style: TextStyle(color: Colors.white54, fontSize: 13, height: 1.4),
+                textAlign: TextAlign.center,
+              ),
+            const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _goToPermissionStep,
-                icon: const Icon(Icons.call_rounded),
-                label: const Text("Chamar a Megan"),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.red,
+              child: OutlinedButton.icon(
+                onPressed: _acceptMission,
+                icon: const Icon(Icons.flag_rounded),
+                label: const Text("Aceitar Missão"),
+                style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.white,
+                  side: BorderSide(color: Colors.white.withValues(alpha: 0.4)),
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                 ),
