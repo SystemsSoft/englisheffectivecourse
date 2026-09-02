@@ -4,8 +4,10 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/aluno_ia_model.dart';
 import '../models/assinatura_status_model.dart';
+import '../models/curriculo_model.dart';
 import '../models/megan_call_state.dart';
 import '../services/aluno_ia_service.dart';
+import '../services/curriculo_service.dart';
 import '../services/megan_call_service.dart';
 import '../services/megan_ringback_player.dart';
 import '../services/megan_user_resolver.dart';
@@ -21,6 +23,7 @@ class TalkToMegamScreen extends StatefulWidget {
 
 class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   final AlunoIaService _alunoIaService = AlunoIaService();
+  final CurriculoService _curriculoService = CurriculoService();
   final MeganUserResolver _userResolver = MeganUserResolver();
   final MeganRingbackPlayer _ringback = MeganRingbackPlayer();
   MeganCallService? _callService;
@@ -34,6 +37,12 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
 
   /// Só consultado quando o aluno já passou da missão 1 (ver [_loadAluno]).
   AssinaturaStatusDto? _assinaturaStatus;
+
+  /// Todos os módulos do currículo, usados para alimentar o card "Agenda de
+  /// Desafios Diários". Null se ainda não carregou ou se o endpoint
+  /// /curriculo falhar (card cai num fallback).
+  List<CurriculoModuloDto>? _curriculo;
+  String? _curriculoError;
 
   /// userId (ULID) do aluno na Megan — gerado e persistido localmente na
   /// primeira vez, reutilizado nas próximas (ver [MeganUserIdStore]).
@@ -103,12 +112,31 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
         _assinaturaStatus = assinatura;
         _loadingAluno = false;
       });
+
+      // Isolado do resto: se o currículo falhar, o card mostra um
+      // fallback, mas não trava a tela inteira.
+      unawaited(_loadCurriculo());
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _loadError = 'Não foi possível carregar seus dados: $e';
         _loadingAluno = false;
       });
+    }
+  }
+
+  /// Busca todos os módulos do currículo, para alimentar o card "Agenda de
+  /// Desafios Diários" com module1 e module2 (e os que vierem depois).
+  Future<void> _loadCurriculo() async {
+    if (!mounted) return;
+    setState(() => _curriculoError = null);
+    try {
+      final modulos = await _curriculoService.getCurriculo();
+      if (!mounted) return;
+      setState(() => _curriculo = modulos);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _curriculoError = '$e');
     }
   }
 
@@ -626,14 +654,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     );
   }
 
-  // Cards puramente decorativos — não há dado real por trás (o backend só
-  // controla uma missão numérica por dia, não 3 simulações separadas).
   Widget _buildDailyChallengesCard() {
-    const items = [
-      (icon: Icons.mic_rounded, title: '"The Daily Grind" - Simulação 1'),
-      (icon: Icons.coffee_rounded, title: '"Ordering Coffee" - Simulação 2'),
-      (icon: Icons.work_rounded, title: '"Job Interview" - Simulação 3'),
-    ];
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
@@ -658,37 +679,150 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
             ],
           ),
           const SizedBox(height: 14),
-          for (final item in items) ...[
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(item.icon, color: Colors.white54, size: 14),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    item.title,
-                    style: const TextStyle(color: Colors.white, fontSize: 11, height: 1.3),
-                  ),
-                ),
-                const SizedBox(width: 4),
-                const Icon(Icons.check_circle_rounded, color: Colors.lightBlueAccent, size: 15),
-              ],
-            ),
-            const SizedBox(height: 6),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: 1,
-                minHeight: 4,
-                backgroundColor: Colors.white12,
-                valueColor: const AlwaysStoppedAnimation(Colors.lightBlueAccent),
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
+          _buildDailyChallengesContent(),
         ],
       ),
     );
+  }
+
+  /// Extrai o número final do moduleId (ex.: "module2" -> 2), para ordenar
+  /// e comparar módulos com segurança.
+  int _moduleNumber(String moduleId) {
+    final match = RegExp(r'(\d+)$').firstMatch(moduleId);
+    return int.tryParse(match?.group(1) ?? '') ?? 0;
+  }
+
+  Widget _buildDailyChallengesContent() {
+    if (_curriculoError != null) {
+      return const Text(
+        "Não foi possível carregar a agenda de desafios.",
+        style: TextStyle(color: Colors.white38, fontSize: 11, height: 1.3),
+      );
+    }
+    final modulos = _curriculo;
+    if (modulos == null || modulos.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 8),
+          child: SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white38),
+          ),
+        ),
+      );
+    }
+
+    final missaoAtualInt = int.tryParse(_aluno?.missaoAtual ?? '1') ?? 1;
+    final moduloAtualNumero = _moduleNumber(_aluno?.moduloAtual ?? 'module1');
+
+    final ordenados = [...modulos]
+      ..sort((a, b) => _moduleNumber(a.moduleId).compareTo(_moduleNumber(b.moduleId)));
+
+    final children = <Widget>[];
+    for (final modulo in ordenados) {
+      final numero = _moduleNumber(modulo.moduleId);
+      children.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            'Módulo $numero',
+            style: const TextStyle(
+              color: Colors.white54,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ),
+      );
+
+      for (final dia in modulo.dias) {
+        final bool concluido;
+        if (numero < moduloAtualNumero) {
+          concluido = true; // módulo já totalmente ultrapassado
+        } else if (numero == moduloAtualNumero) {
+          concluido = dia.day <= missaoAtualInt;
+        } else {
+          concluido = false; // módulo futuro, ainda não liberado
+        }
+
+        children.add(
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                concluido ? Icons.check_circle_rounded : Icons.lock_rounded,
+                color: concluido ? Colors.lightBlueAccent : Colors.white24,
+                size: 15,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Dia ${dia.day}: ${dia.topic}',
+                  style: TextStyle(
+                    color: concluido ? Colors.white : Colors.white38,
+                    fontSize: 11,
+                    height: 1.3,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+        children.add(const SizedBox(height: 6));
+        children.add(
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: concluido ? 1 : 0,
+              minHeight: 4,
+              backgroundColor: Colors.white12,
+              valueColor: const AlwaysStoppedAnimation(Colors.lightBlueAccent),
+            ),
+          ),
+        );
+        children.add(const SizedBox(height: 12));
+      }
+    }
+
+    // "Desbloqueado" só quando o aluno passou de todos os módulos que já
+    // existem no currículo — o que vem depois é o próximo módulo, ainda
+    // não implementado, representado pelo footer "Desafios bloqueados".
+    final ultimoModulo = ordenados.last;
+    final ultimoModuloNumero = _moduleNumber(ultimoModulo.moduleId);
+    final tudoConcluido = moduloAtualNumero > ultimoModuloNumero ||
+        (moduloAtualNumero == ultimoModuloNumero && missaoAtualInt > ultimoModulo.totalDias);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ...children,
+        _buildLockedChallengesFooter(unlocked: tudoConcluido),
+      ],
+    );
+  }
+
+  /// Seção final da agenda: enquanto o aluno não termina todas as missões
+  /// do módulo, mostra os "desafios bloqueados" com uma animação de pulso
+  /// no cadeado, incentivando a completar tudo.
+  Widget _buildLockedChallengesFooter({required bool unlocked}) {
+    if (unlocked) {
+      return Row(
+        children: [
+          const Icon(Icons.emoji_events_rounded, color: Colors.amberAccent, size: 18),
+          const SizedBox(width: 8),
+          const Flexible(
+            child: Text(
+              "Parabéns! Você desbloqueou sua primeira medalha de conquista.",
+              style: TextStyle(color: Colors.amberAccent, fontSize: 11, fontWeight: FontWeight.bold, height: 1.3),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return const _LockedChallengesFooter();
   }
 
   Widget _buildImmersionCard() {
@@ -1097,6 +1231,75 @@ class _CallActionButton extends StatelessWidget {
           style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500),
         ),
       ],
+    );
+  }
+}
+
+/// Seção "Desafios bloqueados" da agenda, com o cadeado pulsando
+/// continuamente até o aluno concluir todas as missões do módulo.
+class _LockedChallengesFooter extends StatefulWidget {
+  const _LockedChallengesFooter();
+
+  @override
+  State<_LockedChallengesFooter> createState() => _LockedChallengesFooterState();
+}
+
+class _LockedChallengesFooterState extends State<_LockedChallengesFooter>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) => Opacity(
+        opacity: 0.5 + _controller.value * 0.5,
+        child: child,
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.lock_rounded, color: Colors.white38, size: 16),
+                SizedBox(width: 8),
+                Text(
+                  "Desafios bloqueados",
+                  style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              "Cumpra todas as missões para desbloqueá-los e ganhe sua "
+              "primeira medalha de conquista.",
+              style: TextStyle(color: Colors.white38, fontSize: 11, height: 1.3),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
