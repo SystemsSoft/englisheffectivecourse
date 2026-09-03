@@ -34,7 +34,10 @@ class MeganCallService {
   /// Chamado a cada mudança de "Megan está falando" (true) / silêncio (false).
   final void Function(bool speaking) onMeganSpeakingChanged;
 
-  /// Chamado quando o socket é fechado (pelo servidor ou pelo aluno).
+  /// Chamado quando o socket cai sozinho (erro ou fechamento pelo
+  /// servidor) — nunca disparado por [hangUp] (desligamento intencional
+  /// pelo aluno, que não chama este callback). A tela usa isso como sinal
+  /// de queda inesperada para decidir se tenta reconectar automaticamente.
   final void Function() onClosed;
 
   /// Chamado quando o aluno terminou de falar e a Megan ainda não começou a
@@ -128,7 +131,7 @@ class MeganCallService {
   /// de `realtimeInput.audio` e não passa pelo reconhecimento de voz, então
   /// não aparece na transcrição do aluno.
   void _sendGreeting() {
-    _channel?.sink.add(
+    _sendToSocket(
       jsonEncode({
         'clientContent': {
           'turns': [
@@ -147,7 +150,7 @@ class MeganCallService {
 
   void _sendAudioChunk(Uint8List pcm16) {
     if (_muted || !_socketActive) return;
-    _channel?.sink.add(
+    _sendToSocket(
       jsonEncode({
         'realtimeInput': {
           'audio': {
@@ -157,6 +160,20 @@ class MeganCallService {
         },
       }),
     );
+  }
+
+  /// Existe um intervalo real entre o socket entrar em estado "CLOSING" (no
+  /// navegador) e o stream do Dart disparar onError/onDone — durante essa
+  /// janela, `_socketActive` ainda está `true`, mas `sink.add()` já lança
+  /// "WebSocket is already in CLOSING or CLOSED state.". Isolado aqui para
+  /// não deixar esse erro vazar pro console/derrubar o fluxo de áudio.
+  void _sendToSocket(String data) {
+    try {
+      _channel?.sink.add(data);
+    } catch (_) {
+      // A conexão já está caindo — o handler onError/onDone do stream vai
+      // cuidar de notificar a UI (e, se for o caso, reconectar) em breve.
+    }
   }
 
   void _handleSocketData(dynamic event) {

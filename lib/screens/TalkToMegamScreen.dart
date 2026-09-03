@@ -62,8 +62,8 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   final ScrollController _transcriptScrollController = ScrollController();
   final ScrollController _dailyChallengesScrollController = ScrollController();
 
-  static const int _callDurationLimitSeconds = 15 * 60;
-  static const int _finishChallengeUnlockSeconds = 10 * 60;
+  static const int _callDurationLimitSeconds = 10 * 60;
+  static const int _finishChallengeUnlockSeconds = 5 * 60;
 
   Timer? _callTimer;
   int _callSecondsRemaining = _callDurationLimitSeconds;
@@ -163,6 +163,17 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
 
   void _startCallTimer() {
     _callSecondsRemaining = _callDurationLimitSeconds;
+    _runCallTimer();
+  }
+
+  /// Retoma a contagem sem resetar `_callSecondsRemaining` — usado depois
+  /// de uma reconexão bem-sucedida, para não devolver os 10 minutos
+  /// inteiros ao aluno só porque a conexão caiu e voltou.
+  void _resumeCallTimer() {
+    _runCallTimer();
+  }
+
+  void _runCallTimer() {
     _callTimer?.cancel();
     _callTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) return;
@@ -171,7 +182,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
         debugPrint(
           '[Megan] Timer chegou a 0 automaticamente — chamando _completeCallAndAdvanceMission.',
         );
-        // Chamada atingiu os 15 minutos — encerra automaticamente e só
+        // Chamada atingiu os 10 minutos — encerra automaticamente e só
         // aqui avança a missão (nunca em desligamento manual antes do tempo).
         _completeCallAndAdvanceMission();
         return;
@@ -180,7 +191,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     });
   }
 
-  /// Libera o atalho "Finalizar Desafio" depois de 10 minutos de chamada.
+  /// Libera o atalho "Finalizar Desafio" depois de 5 minutos de chamada.
   bool get _canFinishChallenge =>
       (_callDurationLimitSeconds - _callSecondsRemaining) >=
       _finishChallengeUnlockSeconds;
@@ -255,6 +266,13 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     });
   }
 
+  /// Tentativas de reconexão automática quando o socket cai sozinho no
+  /// meio da chamada (ver [_handleConnectionLost]).
+  int _reconnectAttempts = 0;
+  bool _isReconnecting = false;
+  static const int _maxReconnectAttempts = 3;
+  static const Duration _reconnectDelay = Duration(seconds: 2);
+
   Future<void> _beginCall() async {
     setState(() {
       _state = MeganCallState.connecting;
@@ -262,8 +280,18 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
       _meganTranscript = '';
       _meganThinking = false;
       _advanceMissionError = null;
+      _callError = null;
+      _reconnectAttempts = 0;
+      _isReconnecting = false;
     });
+    await _startCallService();
+  }
 
+  /// Monta e inicia o [MeganCallService]. Usado tanto para a primeira
+  /// ligação quanto para reconectar (ver [_attemptReconnect]) — nesse
+  /// segundo caso `_isReconnecting` já está `true` e o cronômetro não é
+  /// resetado quando a Megan responder de novo (ver [_handleMeganAnswered]).
+  Future<void> _startCallService() async {
     final service = MeganCallService(
       userId: _meganUserId!,
       onSessionReady: (day, topic) async {
@@ -303,7 +331,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
       },
       onClosed: () {
         if (!mounted) return;
-        _finishCall();
+        _handleConnectionLost();
       },
     );
     _callService = service;
@@ -313,21 +341,79 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     } catch (e) {
       if (!mounted) return;
       await _ringback.stop();
-      setState(() {
-        _callError = 'Não foi possível acessar o microfone: $e';
-        _state = MeganCallState.idle;
-      });
+      if (_isReconnecting) {
+        // Falhou ao tentar reabrir a sessão — tenta de novo (respeitando
+        // o limite) em vez de desistir na primeira falha de reconexão.
+        _isReconnecting = false;
+        _handleConnectionLost();
+      } else {
+        setState(() {
+          _callError = 'Não foi possível acessar o microfone: $e';
+          _state = MeganCallState.idle;
+        });
+      }
     }
+  }
+
+  /// Chamado quando o socket cai sozinho (nunca em desligamento manual —
+  /// ver a documentação de [MeganCallService.onClosed]). Se a chamada
+  /// estava ativa e ainda sobra tempo no cronômetro, tenta reconectar
+  /// automaticamente; senão, encerra a chamada normalmente.
+  void _handleConnectionLost() {
+    final wasActive =
+        _state == MeganCallState.inCall ||
+        _state == MeganCallState.ringing ||
+        _state == MeganCallState.reconnecting;
+    final hasTimeLeft = _callSecondsRemaining > 0;
+
+    if (wasActive &&
+        hasTimeLeft &&
+        _reconnectAttempts < _maxReconnectAttempts) {
+      _attemptReconnect();
+      return;
+    }
+    if (wasActive && _reconnectAttempts >= _maxReconnectAttempts) {
+      _callError =
+          'Não foi possível reconectar com a Megan após várias tentativas.';
+    }
+    _finishCall();
+  }
+
+  /// Reabre a sessão com a Megan sem reiniciar o cronômetro: pausa o timer
+  /// (mantendo `_callSecondsRemaining` como está), mostra "Reconectando...",
+  /// espera um pouco e tenta uma nova conexão com o mesmo userId.
+  Future<void> _attemptReconnect() async {
+    _reconnectAttempts++;
+    _isReconnecting = true;
+    _callTimer?.cancel(); // pausa — não reseta _callSecondsRemaining
+    if (!mounted) return;
+    setState(() {
+      _state = MeganCallState.reconnecting;
+      _callError = null;
+    });
+    await Future.delayed(_reconnectDelay);
+    // Se o aluno desligou manualmente durante a espera, _finishCall() já
+    // mudou _state para `ended` — não reabre a sessão nesse caso.
+    if (!mounted || _state != MeganCallState.reconnecting) return;
+    await _startCallService();
   }
 
   /// Chamado assim que a Megan dá o primeiro sinal de resposta (áudio ou
   /// transcrição) — "atende" a ligação de fato: para o tom de chamando,
-  /// entra na tela de chamada e só agora começa a contar os 15 minutos.
+  /// entra na tela de chamada. Numa reconexão, retoma o cronômetro de onde
+  /// parou; numa primeira ligação, começa do zero nos 10 minutos.
   void _handleMeganAnswered() {
     if (_state != MeganCallState.ringing) return;
     _ringback.stop();
+    final wasReconnecting = _isReconnecting;
+    _isReconnecting = false;
     setState(() => _state = MeganCallState.inCall);
-    _startCallTimer();
+    if (wasReconnecting) {
+      _reconnectAttempts = 0;
+      _resumeCallTimer();
+    } else {
+      _startCallTimer();
+    }
   }
 
   /// Rola a caixa de transcrição até o fim, para sempre mostrar a última
@@ -347,6 +433,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   void _finishCall() {
     _callTimer?.cancel();
     _ringback.stop();
+    _isReconnecting = false;
     setState(() {
       _state = MeganCallState.ended;
       _meganSpeaking = false;
@@ -369,7 +456,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     }
   }
 
-  /// Chamado quando os 15 minutos são completados, ou quando o aluno clica
+  /// Chamado quando os 10 minutos são completados, ou quando o aluno clica
   /// em "Finalizar Desafio" (liberado a partir de 10 minutos) — avança a
   /// missão do aluno antes de encerrar a chamada.
   bool _finishingCall = false;
@@ -524,6 +611,8 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
         return _buildRinging();
       case MeganCallState.inCall:
         return _buildInCall();
+      case MeganCallState.reconnecting:
+        return _buildReconnecting();
       case MeganCallState.ended:
         return _buildEnded();
     }
@@ -777,7 +866,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     const items = [
       (
         emoji: '🎯',
-        title: 'Missão de 15 Minutos',
+        title: 'Missão de 10 Minutos',
         desc:
             'Entre e converse em tempo real com a M.E.G.A.N. exclusivamente '
             'sobre o tópico daquele desafio.',
@@ -1278,6 +1367,70 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     );
   }
 
+  Widget _buildReconnecting() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildAvatar(pulsing: true, ringColor: Colors.amberAccent),
+            const SizedBox(height: 24),
+            const Text(
+              "Megan",
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.amberAccent,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  "Reconectando... ($_reconnectAttempts/$_maxReconnectAttempts)",
+                  style: const TextStyle(
+                    color: Colors.amberAccent,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              "A conexão caiu, mas seu tempo continua guardado: $_formattedCallDuration restantes.",
+              style: const TextStyle(
+                color: Colors.white54,
+                fontSize: 12,
+                height: 1.3,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 40),
+            _CallActionButton(
+              icon: Icons.call_end_rounded,
+              label: "Desligar",
+              backgroundColor: AppColors.red,
+              iconColor: Colors.white,
+              onPressed: _hangUp,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildInCall() {
     return Column(
       children: [
@@ -1537,6 +1690,14 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
               style: TextStyle(color: Colors.white70, fontSize: 14),
               textAlign: TextAlign.center,
             ),
+            if (_callError != null) ...[
+              const SizedBox(height: 16),
+              Text(
+                _callError!,
+                style: const TextStyle(color: AppColors.redLight, fontSize: 12),
+                textAlign: TextAlign.center,
+              ),
+            ],
             if (_advanceMissionError != null) ...[
               const SizedBox(height: 16),
               Text(

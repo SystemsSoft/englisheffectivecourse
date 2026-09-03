@@ -41,7 +41,7 @@ class AlunoIaService {
   }
 
   /// Avança a missão (dia) do aluno. Só deve ser chamado quando o aluno
-  /// completa a chamada de voz inteira (15 minutos) — nunca ao desligar
+  /// completa a chamada de voz inteira (10 minutos) — nunca ao desligar
   /// antes do tempo.
   Future<AlunoIaDto> avancarMissao(String userId) async {
     final uri = Uri.parse(
