@@ -85,7 +85,9 @@ class MeganCallService {
     await micCapture.start();
     await _playback.init();
 
-    final uri = Uri.parse('${ApiConfig.wsBaseUrl}/ws/megan/${Uri.encodeComponent(userId)}');
+    final uri = Uri.parse(
+      '${ApiConfig.wsBaseUrl}/ws/megan/${Uri.encodeComponent(userId)}',
+    );
     final channel = WebSocketChannel.connect(uri);
     _channel = channel;
     _socketActive = true;
@@ -126,31 +128,35 @@ class MeganCallService {
   /// de `realtimeInput.audio` e não passa pelo reconhecimento de voz, então
   /// não aparece na transcrição do aluno.
   void _sendGreeting() {
-    _channel?.sink.add(jsonEncode({
-      'clientContent': {
-        'turns': [
-          {
-            'role': 'user',
-            'parts': [
-              {'text': 'Hi!'},
-            ],
-          },
-        ],
-        'turnComplete': true,
-      },
-    }));
+    _channel?.sink.add(
+      jsonEncode({
+        'clientContent': {
+          'turns': [
+            {
+              'role': 'user',
+              'parts': [
+                {'text': 'Hi!'},
+              ],
+            },
+          ],
+          'turnComplete': true,
+        },
+      }),
+    );
   }
 
   void _sendAudioChunk(Uint8List pcm16) {
     if (_muted || !_socketActive) return;
-    _channel?.sink.add(jsonEncode({
-      'realtimeInput': {
-        'audio': {
-          'data': base64Encode(pcm16),
-          'mimeType': 'audio/pcm;rate=16000',
+    _channel?.sink.add(
+      jsonEncode({
+        'realtimeInput': {
+          'audio': {
+            'data': base64Encode(pcm16),
+            'mimeType': 'audio/pcm;rate=16000',
+          },
         },
-      },
-    }));
+      }),
+    );
   }
 
   void _handleSocketData(dynamic event) {
@@ -181,7 +187,10 @@ class MeganCallService {
         return;
       }
       if (msg['type'] == 'error') {
-        onServerError(msg['message'] as String? ?? 'Não foi possível iniciar a chamada com a Megan agora.');
+        onServerError(
+          msg['message'] as String? ??
+              'Não foi possível iniciar a chamada com a Megan agora.',
+        );
         return;
       }
     }
@@ -203,7 +212,8 @@ class MeganCallService {
     // Transcrição do que o aluno disse: chega enquanto ele ainda está
     // falando, antes de qualquer resposta da Megan — é o sinal de que a
     // Megan "ouviu" o aluno e está prestes a processar a resposta.
-    final inputTranscription = serverContent['inputTranscription'] as Map<String, dynamic>?;
+    final inputTranscription =
+        serverContent['inputTranscription'] as Map<String, dynamic>?;
     final inputPiece = inputTranscription?['text'] as String?;
     if (inputPiece != null && inputPiece.isNotEmpty) {
       _userTranscript.write(inputPiece);
@@ -212,7 +222,8 @@ class MeganCallService {
     }
 
     // Transcrição do que a Megan está dizendo, em paralelo ao áudio.
-    final outputTranscription = serverContent['outputTranscription'] as Map<String, dynamic>?;
+    final outputTranscription =
+        serverContent['outputTranscription'] as Map<String, dynamic>?;
     final outputPiece = outputTranscription?['text'] as String?;
     if (outputPiece != null && outputPiece.isNotEmpty) {
       _meganTranscript.write(outputPiece);
@@ -220,11 +231,13 @@ class MeganCallService {
       onMeganThinkingChanged?.call(false);
     }
 
-    final parts = (serverContent['modelTurn']
-        as Map<String, dynamic>?)?['parts'] as List?;
+    final parts =
+        (serverContent['modelTurn'] as Map<String, dynamic>?)?['parts']
+            as List?;
     var playedSomething = false;
     for (final part in parts ?? const []) {
-      final b64 = (part as Map<String, dynamic>)['inlineData']?['data'] as String?;
+      final b64 =
+          (part as Map<String, dynamic>)['inlineData']?['data'] as String?;
       if (b64 != null) {
         _playback.enqueuePcm16(base64Decode(b64));
         playedSomething = true;
@@ -250,20 +263,40 @@ class MeganCallService {
   /// desligamento manual (hangUp) quanto quando o socket cai sozinho — sem
   /// isso, a captura continuava mandando áudio para um socket já
   /// fechado/errado, gerando erros repetidos no console.
+  ///
+  /// Cada etapa é isolada em try/catch: se uma falhar (ex.: fechar um
+  /// AudioContext que o navegador já fechou sozinho), as demais ainda
+  /// rodam — sem isso, uma única falha aqui travava toda a cadeia
+  /// hangUp() -> _completeCallAndAdvanceMission(), e a UI nunca saía do
+  /// estado "em chamada" mesmo com a missão já avançada no servidor.
   Future<void> _stopMicAndPlayback() async {
-    await _micSubscription?.cancel();
-    await _vadSubscription?.cancel();
-    await _micCapture?.stop();
-    await _playback.dispose();
+    try {
+      await _micSubscription?.cancel();
+    } catch (_) {}
+    try {
+      await _vadSubscription?.cancel();
+    } catch (_) {}
+    try {
+      await _micCapture?.stop();
+    } catch (_) {}
+    try {
+      await _playback.dispose();
+    } catch (_) {}
   }
 
   /// Encerra a chamada: fecha o socket e libera microfone/alto-falante.
+  /// Nunca lança — o chamador sempre pode contar com esta Future
+  /// completando (ver justificativa em [_stopMicAndPlayback]).
   Future<void> hangUp() async {
     if (_closing) return;
     _closing = true;
     _socketActive = false;
     await _stopMicAndPlayback();
-    await _socketSubscription?.cancel();
-    await _channel?.sink.close();
+    try {
+      await _socketSubscription?.cancel();
+    } catch (_) {}
+    try {
+      await _channel?.sink.close();
+    } catch (_) {}
   }
 }

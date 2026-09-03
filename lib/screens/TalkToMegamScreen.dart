@@ -168,6 +168,9 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
       if (!mounted) return;
       if (_callSecondsRemaining <= 0) {
         timer.cancel();
+        debugPrint(
+          '[Megan] Timer chegou a 0 automaticamente — chamando _completeCallAndAdvanceMission.',
+        );
         // Chamada atingiu os 15 minutos — encerra automaticamente e só
         // aqui avança a missão (nunca em desligamento manual antes do tempo).
         _completeCallAndAdvanceMission();
@@ -179,7 +182,8 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
 
   /// Libera o atalho "Finalizar Desafio" depois de 10 minutos de chamada.
   bool get _canFinishChallenge =>
-      (_callDurationLimitSeconds - _callSecondsRemaining) >= _finishChallengeUnlockSeconds;
+      (_callDurationLimitSeconds - _callSecondsRemaining) >=
+      _finishChallengeUnlockSeconds;
 
   String get _formattedCallDuration {
     final minutes = (_callSecondsRemaining ~/ 60).toString().padLeft(2, '0');
@@ -195,13 +199,17 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   }
 
   Future<void> _acceptMission() async {
-    final baseUri = Uri.parse('https://buy.stripe.com/test_8x2aEWbdj4E12mG3wY9AA01');
+    final baseUri = Uri.parse(
+      'https://buy.stripe.com/test_8x2aEWbdj4E12mG3wY9AA01',
+    );
     // client_reference_id permite ao webhook do Stripe identificar qual
     // aluno (userId/ULID na Megan) completou o pagamento.
-    final uri = baseUri.replace(queryParameters: {
-      ...baseUri.queryParameters,
-      'client_reference_id': _meganUserId ?? '',
-    });
+    final uri = baseUri.replace(
+      queryParameters: {
+        ...baseUri.queryParameters,
+        'client_reference_id': _meganUserId ?? '',
+      },
+    );
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
       _startSubscriptionPolling();
@@ -219,7 +227,9 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     setState(() => _checkingSubscription = true);
 
     var attempts = 0;
-    _subscriptionPollTimer = Timer.periodic(_subscriptionPollInterval, (timer) async {
+    _subscriptionPollTimer = Timer.periodic(_subscriptionPollInterval, (
+      timer,
+    ) async {
       attempts++;
       try {
         final status = await _alunoIaService.getAssinaturaStatus(userId);
@@ -345,16 +355,45 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   }
 
   Future<void> _hangUp() async {
-    await _callService?.hangUp();
-    _finishCall();
+    // hangUp() do MeganCallService já não lança (protegido internamente),
+    // mas o try/catch aqui é uma segunda rede de segurança: mesmo que algo
+    // dê errado ao liberar mic/socket, a tela sempre transiciona para
+    // "encerrada" — antes, uma exceção aqui deixava a UI presa em "em
+    // chamada" mesmo já tendo avançado a missão no servidor.
+    try {
+      await _callService?.hangUp();
+    } catch (_) {
+      // ignorado de propósito — ver comentário acima
+    } finally {
+      _finishCall();
+    }
   }
 
   /// Chamado quando os 15 minutos são completados, ou quando o aluno clica
   /// em "Finalizar Desafio" (liberado a partir de 10 minutos) — avança a
   /// missão do aluno antes de encerrar a chamada.
+  bool _finishingCall = false;
+
   Future<void> _completeCallAndAdvanceMission() async {
-    await _advanceMission();
-    await _hangUp();
+    debugPrint(
+      '[Megan] _completeCallAndAdvanceMission chamado. '
+      '_finishingCall=$_finishingCall _meganUserId=$_meganUserId '
+      'aluno.missaoAtual=${_aluno?.missaoAtual} '
+      'aluno.moduloAtual=${_aluno?.moduloAtual}',
+    );
+    if (_finishingCall) {
+      debugPrint('[Megan] Ignorado: já havia uma finalização em andamento.');
+      return; // evita cliques duplicados/corrida com o timer
+    }
+    setState(() => _finishingCall = true);
+    try {
+      await _advanceMission();
+      debugPrint('[Megan] _advanceMission concluído, chamando _hangUp agora.');
+      await _hangUp();
+      debugPrint('[Megan] _hangUp concluído.');
+    } finally {
+      if (mounted) setState(() => _finishingCall = false);
+    }
   }
 
   /// Chama POST /aluno-ia/{userId}/avancar-missao. Não silencia falhas: se
@@ -363,19 +402,38 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   /// e a missão simplesmente não avançava sem nenhum aviso.
   Future<void> _advanceMission() async {
     final userId = _meganUserId;
-    if (userId == null) return;
+    debugPrint('[Megan] _advanceMission iniciado com userId=$userId');
+    if (userId == null) {
+      debugPrint('[Megan] ✖ userId é null — abortando sem chamar o backend.');
+      setState(() {
+        _advanceMissionError =
+            'Não foi possível avançar sua missão: userId ausente.';
+      });
+      return;
+    }
     setState(() {
       _advancingMission = true;
       _advanceMissionError = null;
     });
     try {
       final atualizado = await _alunoIaService.avancarMissao(userId);
-      if (!mounted) return;
+      debugPrint(
+        '[Megan] ✔ avancarMissao retornou com sucesso: '
+        'missaoAtual=${atualizado.missaoAtual}',
+      );
+      if (!mounted) {
+        debugPrint(
+          '[Megan] ⚠ Widget desmontado antes do setState — resultado descartado da UI (mas o POST já rodou no servidor).',
+        );
+        return;
+      }
       setState(() {
         _aluno = atualizado;
         _advancingMission = false;
       });
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('[Megan] ✖ avancarMissao lançou exceção: $e');
+      debugPrint('[Megan] ✖ StackTrace: $st');
       if (!mounted) return;
       setState(() {
         _advancingMission = false;
@@ -419,12 +477,18 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
           child: Column(
             children: [
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white70),
+                      icon: const Icon(
+                        Icons.arrow_back_ios_new_rounded,
+                        color: Colors.white70,
+                      ),
                       onPressed: () => Navigator.pop(context),
                     ),
                     const Text(
@@ -502,8 +566,16 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
               shape: BoxShape.circle,
               border: Border.all(color: _neonCyan, width: 3),
               boxShadow: [
-                BoxShadow(color: _neonCyan.withValues(alpha: 0.65), blurRadius: 22, spreadRadius: 1),
-                BoxShadow(color: _neonCyan.withValues(alpha: 0.35), blurRadius: 46, spreadRadius: 6),
+                BoxShadow(
+                  color: _neonCyan.withValues(alpha: 0.65),
+                  blurRadius: 22,
+                  spreadRadius: 1,
+                ),
+                BoxShadow(
+                  color: _neonCyan.withValues(alpha: 0.35),
+                  blurRadius: 46,
+                  spreadRadius: 6,
+                ),
               ],
             ),
           ),
@@ -514,7 +586,11 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
             child: Image.asset(
               _megamAvatarAsset,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const Icon(Icons.person_rounded, size: 80, color: Colors.white),
+              errorBuilder: (_, __, ___) => const Icon(
+                Icons.person_rounded,
+                size: 80,
+                color: Colors.white,
+              ),
             ),
           ),
         ),
@@ -524,7 +600,9 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
 
   Widget _buildIdle() {
     if (_loadingAluno) {
-      return const Center(child: CircularProgressIndicator(color: Colors.white70));
+      return const Center(
+        child: CircularProgressIndicator(color: Colors.white70),
+      );
     }
     if (_loadError != null) {
       return Center(
@@ -533,9 +611,16 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(_loadError!, style: const TextStyle(color: Colors.white70), textAlign: TextAlign.center),
+              Text(
+                _loadError!,
+                style: const TextStyle(color: Colors.white70),
+                textAlign: TextAlign.center,
+              ),
               const SizedBox(height: 16),
-              ElevatedButton(onPressed: _loadAluno, child: const Text("Tentar novamente")),
+              ElevatedButton(
+                onPressed: _loadAluno,
+                child: const Text("Tentar novamente"),
+              ),
             ],
           ),
         ),
@@ -551,7 +636,12 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
           const SizedBox(height: 24),
           const Text(
             "MEGAN",
-            style: TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: 0.5),
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 30,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.5,
+            ),
           ),
           const SizedBox(height: 6),
           const Text(
@@ -571,7 +661,11 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(30),
                 boxShadow: [
-                  BoxShadow(color: AppColors.red.withValues(alpha: 0.55), blurRadius: 24, spreadRadius: 1),
+                  BoxShadow(
+                    color: AppColors.red.withValues(alpha: 0.55),
+                    blurRadius: 24,
+                    spreadRadius: 1,
+                  ),
                 ],
               ),
               child: ElevatedButton(
@@ -579,8 +673,13 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.red,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 18,
+                    horizontal: 16,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
                 ),
                 child: const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -591,7 +690,11 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
                       child: Text(
                         "INICIAR SIMULAÇÃO DE CONVERSA (TEMPO REAL)",
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, letterSpacing: 0.3),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          letterSpacing: 0.3,
+                        ),
                       ),
                     ),
                   ],
@@ -602,7 +705,11 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
             const Text(
               "Sua assinatura precisa estar ativa para continuar a partir "
               "da missão 2. Aceite a missão abaixo para assinar.",
-              style: TextStyle(color: Colors.white54, fontSize: 13, height: 1.4),
+              style: TextStyle(
+                color: Colors.white54,
+                fontSize: 13,
+                height: 1.4,
+              ),
               textAlign: TextAlign.center,
             ),
           if (_shouldShowAcceptMission) ...[
@@ -617,7 +724,9 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
                   foregroundColor: Colors.white,
                   side: BorderSide(color: Colors.white.withValues(alpha: 0.4)),
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
                 ),
               ),
             ),
@@ -630,12 +739,18 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
                 const SizedBox(
                   width: 14,
                   height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white54,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Text(
                   "Verificando pagamento...",
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 12),
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.6),
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
@@ -663,19 +778,22 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
       (
         emoji: '🎯',
         title: 'Missão de 15 Minutos',
-        desc: 'Entre e converse em tempo real com a M.E.G.A.N. exclusivamente '
+        desc:
+            'Entre e converse em tempo real com a M.E.G.A.N. exclusivamente '
             'sobre o tópico daquele desafio.',
       ),
       (
         emoji: '🔓',
         title: 'Desbloqueio Progressivo',
-        desc: 'Cumpriu a missão com sucesso? A fase do dia seguinte é '
+        desc:
+            'Cumpriu a missão com sucesso? A fase do dia seguinte é '
             'liberada automaticamente.',
       ),
       (
         emoji: '🏅',
         title: 'Trilha de Conquistas',
-        desc: 'Quanto mais dias você fala, mais o inglês vira reflexo e mais '
+        desc:
+            'Quanto mais dias você fala, mais o inglês vira reflexo e mais '
             'perto você fica de destravar suas medalhas de fluência.',
       ),
     ];
@@ -692,7 +810,11 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
         children: [
           const Text(
             "Como funcionam os Desafios Diários?",
-            style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           const SizedBox(height: 8),
           const Text(
@@ -710,11 +832,18 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
                 Expanded(
                   child: RichText(
                     text: TextSpan(
-                      style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.4),
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
                       children: [
                         TextSpan(
                           text: '${item.title}: ',
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         TextSpan(text: item.desc),
                       ],
@@ -744,12 +873,20 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.event_note_rounded, color: AppColors.redLight, size: 18),
+              const Icon(
+                Icons.event_note_rounded,
+                color: AppColors.redLight,
+                size: 18,
+              ),
               const SizedBox(width: 8),
               const Flexible(
                 child: Text(
                   "Agenda de Desafios Diários",
-                  style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
@@ -800,7 +937,10 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
           child: SizedBox(
             width: 16,
             height: 16,
-            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white38),
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.white38,
+            ),
           ),
         ),
       );
@@ -810,7 +950,10 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     final moduloAtualNumero = _moduleNumber(_aluno?.moduloAtual ?? 'module1');
 
     final ordenados = [...modulos]
-      ..sort((a, b) => _moduleNumber(a.moduleId).compareTo(_moduleNumber(b.moduleId)));
+      ..sort(
+        (a, b) =>
+            _moduleNumber(a.moduleId).compareTo(_moduleNumber(b.moduleId)),
+      );
 
     final children = <Widget>[];
     for (final modulo in ordenados) {
@@ -884,8 +1027,10 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     // não implementado, representado pelo footer "Desafios bloqueados".
     final ultimoModulo = ordenados.last;
     final ultimoModuloNumero = _moduleNumber(ultimoModulo.moduleId);
-    final tudoConcluido = moduloAtualNumero > ultimoModuloNumero ||
-        (moduloAtualNumero == ultimoModuloNumero && missaoAtualInt > ultimoModulo.totalDias);
+    final tudoConcluido =
+        moduloAtualNumero > ultimoModuloNumero ||
+        (moduloAtualNumero == ultimoModuloNumero &&
+            missaoAtualInt > ultimoModulo.totalDias);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -903,12 +1048,21 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
     if (unlocked) {
       return Row(
         children: [
-          const Icon(Icons.emoji_events_rounded, color: Colors.amberAccent, size: 18),
+          const Icon(
+            Icons.emoji_events_rounded,
+            color: Colors.amberAccent,
+            size: 18,
+          ),
           const SizedBox(width: 8),
           const Flexible(
             child: Text(
               "Parabéns! Você desbloqueou sua primeira medalha de conquista.",
-              style: TextStyle(color: Colors.amberAccent, fontSize: 11, fontWeight: FontWeight.bold, height: 1.3),
+              style: TextStyle(
+                color: Colors.amberAccent,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                height: 1.3,
+              ),
             ),
           ),
         ],
@@ -926,7 +1080,8 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
       ),
       (
         title: 'Rede de Segurança',
-        desc: 'Travou no vocabulário? Fale em português. A M.E.G.A.N. entende, '
+        desc:
+            'Travou no vocabulário? Fale em português. A M.E.G.A.N. entende, '
             'te ensina como falar e retoma o inglês.',
       ),
       (
@@ -945,11 +1100,19 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.headset_mic_rounded, color: AppColors.redLight, size: 22),
+          const Icon(
+            Icons.headset_mic_rounded,
+            color: AppColors.redLight,
+            size: 22,
+          ),
           const SizedBox(height: 10),
           const Text(
             "Imersão Realista (Tempo Real)",
-            style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           const SizedBox(height: 8),
           const Text(
@@ -966,12 +1129,20 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
           for (final item in highlights) ...[
             Text(
               item.title,
-              style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11.5,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 2),
             Text(
               item.desc,
-              style: const TextStyle(color: Colors.white70, fontSize: 11, height: 1.35),
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 11,
+                height: 1.35,
+              ),
             ),
             const SizedBox(height: 10),
           ],
@@ -991,7 +1162,11 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
             const SizedBox(height: 20),
             const Text(
               "Antes de começar",
-              style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 12),
             const Text(
@@ -999,12 +1174,20 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
               "inteligência artificial de terceiros (Google Gemini) para a prática "
               "de conversação em inglês. A conversa não é gravada nem transcrita "
               "no nosso servidor.",
-              style: TextStyle(color: Colors.white70, fontSize: 14, height: 1.4),
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+                height: 1.4,
+              ),
               textAlign: TextAlign.center,
             ),
             if (_callError != null) ...[
               const SizedBox(height: 16),
-              Text(_callError!, style: const TextStyle(color: AppColors.redLight), textAlign: TextAlign.center),
+              Text(
+                _callError!,
+                style: const TextStyle(color: AppColors.redLight),
+                textAlign: TextAlign.center,
+              ),
             ],
             const SizedBox(height: 28),
             SizedBox(
@@ -1015,7 +1198,9 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
                   backgroundColor: AppColors.red,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
                 ),
                 child: const Text("Permitir microfone e ligar"),
               ),
@@ -1023,7 +1208,10 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
             const SizedBox(height: 12),
             TextButton(
               onPressed: () => setState(() => _state = MeganCallState.idle),
-              child: const Text("Cancelar", style: TextStyle(color: Colors.white54)),
+              child: const Text(
+                "Cancelar",
+                style: TextStyle(color: Colors.white54),
+              ),
             ),
           ],
         ),
@@ -1038,7 +1226,10 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
         children: [
           CircularProgressIndicator(color: Colors.white70),
           SizedBox(height: 16),
-          Text("Conectando com a Megan...", style: TextStyle(color: Colors.white70)),
+          Text(
+            "Conectando com a Megan...",
+            style: TextStyle(color: Colors.white70),
+          ),
         ],
       ),
     );
@@ -1053,14 +1244,24 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
           children: [
             _buildAvatar(pulsing: true, ringColor: AppColors.navyBlueLight),
             const SizedBox(height: 24),
-            const Text("Megan", style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+            const Text(
+              "Megan",
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             const SizedBox(height: 8),
             const Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(Icons.call_rounded, color: Colors.white54, size: 16),
                 SizedBox(width: 6),
-                Text("Chamando...", style: TextStyle(color: Colors.white54, fontSize: 14)),
+                Text(
+                  "Chamando...",
+                  style: TextStyle(color: Colors.white54, fontSize: 14),
+                ),
               ],
             ),
             const SizedBox(height: 40),
@@ -1088,20 +1289,38 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
               Container(
                 width: 8,
                 height: 8,
-                decoration: const BoxDecoration(color: Colors.greenAccent, shape: BoxShape.circle),
+                decoration: const BoxDecoration(
+                  color: Colors.greenAccent,
+                  shape: BoxShape.circle,
+                ),
               ),
               const SizedBox(width: 6),
               Text(
                 _formattedCallDuration,
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  letterSpacing: 1,
+                ),
               ),
             ],
           ),
         ),
         const Spacer(flex: 1),
-        _buildAvatar(pulsing: true, ringColor: _meganSpeaking ? AppColors.navyBlueLight : AppColors.red),
+        _buildAvatar(
+          pulsing: true,
+          ringColor: _meganSpeaking ? AppColors.navyBlueLight : AppColors.red,
+        ),
         const SizedBox(height: 16),
-        const Text("Megan", style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+        const Text(
+          "Megan",
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         const SizedBox(height: 6),
         if (_topic != null)
           Padding(
@@ -1114,12 +1333,18 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
           ),
         const SizedBox(height: 12),
         _buildCallStatusRow(),
-        if (_userTranscript.isNotEmpty || _meganTranscript.isNotEmpty || _meganThinking)
+        if (_userTranscript.isNotEmpty ||
+            _meganTranscript.isNotEmpty ||
+            _meganThinking)
           _buildTranscriptBox(),
         if (_callError != null)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 8),
-            child: Text(_callError!, style: const TextStyle(color: AppColors.redLight, fontSize: 12), textAlign: TextAlign.center),
+            child: Text(
+              _callError!,
+              style: const TextStyle(color: AppColors.redLight, fontSize: 12),
+              textAlign: TextAlign.center,
+            ),
           ),
         const Spacer(flex: 2),
         Container(
@@ -1137,22 +1362,27 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
                 icon: _muted ? Icons.mic_off_rounded : Icons.mic_rounded,
                 label: _muted ? "Mudo" : "Mic ativo",
                 isActive: !_muted,
-                onPressed: _toggleMute,
+                onPressed: _finishingCall ? null : _toggleMute,
               ),
               _CallActionButton(
                 icon: Icons.call_end_rounded,
                 label: "Desligar",
                 backgroundColor: AppColors.red,
                 iconColor: Colors.white,
-                onPressed: _hangUp,
+                onPressed: _finishingCall ? null : _hangUp,
               ),
               if (_canFinishChallenge)
                 _CallActionButton(
                   icon: Icons.flag_circle_rounded,
-                  label: "Finalizar Desafio",
+                  label: _finishingCall
+                      ? "Finalizando..."
+                      : "Finalizar Desafio",
                   backgroundColor: AppColors.navyBlueLight,
                   iconColor: Colors.white,
-                  onPressed: _completeCallAndAdvanceMission,
+                  loading: _finishingCall,
+                  onPressed: _finishingCall
+                      ? null
+                      : _completeCallAndAdvanceMission,
                 ),
             ],
           ),
@@ -1186,7 +1416,11 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
         const SizedBox(width: 6),
         Text(
           label,
-          style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            color: color,
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ],
     );
@@ -1212,34 +1446,62 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
             if (_userTranscript.isNotEmpty) ...[
               const Text(
                 "VOCÊ DISSE",
-                style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1),
+                style: TextStyle(
+                  color: Colors.white38,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1,
+                ),
               ),
               const SizedBox(height: 2),
               Text(
                 _userTranscript,
-                style: const TextStyle(color: Colors.white70, fontSize: 13, fontStyle: FontStyle.italic),
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 13,
+                  fontStyle: FontStyle.italic,
+                ),
               ),
               const SizedBox(height: 10),
             ],
             if (_meganTranscript.isNotEmpty) ...[
               const Text(
                 "MEGAN DIZ",
-                style: TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1),
+                style: TextStyle(
+                  color: Colors.greenAccent,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1,
+                ),
               ),
               const SizedBox(height: 2),
               Text(
                 _meganTranscript,
-                style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500, height: 1.3),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  height: 1.3,
+                ),
               ),
             ] else if (_meganThinking) ...[
               const Text(
                 "MEGAN DIZ",
-                style: TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1),
+                style: TextStyle(
+                  color: Colors.greenAccent,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1,
+                ),
               ),
               const SizedBox(height: 2),
               const Text(
                 "...",
-                style: TextStyle(color: Colors.white54, fontSize: 15, fontWeight: FontWeight.w500),
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ],
           ],
@@ -1255,11 +1517,19 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.emoji_events_rounded, color: Colors.amberAccent, size: 56),
+            const Icon(
+              Icons.emoji_events_rounded,
+              color: Colors.amberAccent,
+              size: 56,
+            ),
             const SizedBox(height: 20),
             const Text(
               "Bom trabalho hoje!",
-              style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 8),
             const Text(
@@ -1281,9 +1551,15 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
                     ? const SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white54,
+                        ),
                       )
-                    : const Text("Tentar avançar a missão de novo", style: TextStyle(color: Colors.white70)),
+                    : const Text(
+                        "Tentar avançar a missão de novo",
+                        style: TextStyle(color: Colors.white70),
+                      ),
               ),
             ],
             const SizedBox(height: 28),
@@ -1295,7 +1571,9 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
                   backgroundColor: AppColors.navyBlueLight,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
                 ),
                 child: const Text("Voltar"),
               ),
@@ -1310,10 +1588,11 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
 class _CallActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
   final bool isActive;
   final Color? backgroundColor;
   final Color? iconColor;
+  final bool loading;
 
   const _CallActionButton({
     required this.icon,
@@ -1322,36 +1601,58 @@ class _CallActionButton extends StatelessWidget {
     this.isActive = false,
     this.backgroundColor,
     this.iconColor,
+    this.loading = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final bg = backgroundColor ?? (isActive ? AppColors.navyBlueLight : Colors.white.withValues(alpha: 0.15));
+    final bg =
+        backgroundColor ??
+        (isActive
+            ? AppColors.navyBlueLight
+            : Colors.white.withValues(alpha: 0.15));
     final icColor = iconColor ?? Colors.white;
+    final disabled = onPressed == null;
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Material(
-          color: bg,
-          shape: const CircleBorder(),
-          elevation: isActive ? 4 : 0,
-          child: InkWell(
-            customBorder: const CircleBorder(),
-            onTap: onPressed,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Icon(icon, color: icColor, size: 24),
+    return Opacity(
+      opacity: disabled ? 0.5 : 1,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Material(
+            color: bg,
+            shape: const CircleBorder(),
+            elevation: isActive ? 4 : 0,
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: onPressed,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: loading
+                    ? SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: icColor,
+                        ),
+                      )
+                    : Icon(icon, color: icColor, size: 24),
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          label,
-          textAlign: TextAlign.center,
-          style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500),
-        ),
-      ],
+          const SizedBox(height: 6),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1362,7 +1663,8 @@ class _LockedChallengesFooter extends StatefulWidget {
   const _LockedChallengesFooter();
 
   @override
-  State<_LockedChallengesFooter> createState() => _LockedChallengesFooterState();
+  State<_LockedChallengesFooter> createState() =>
+      _LockedChallengesFooterState();
 }
 
 class _LockedChallengesFooterState extends State<_LockedChallengesFooter>
@@ -1388,10 +1690,8 @@ class _LockedChallengesFooterState extends State<_LockedChallengesFooter>
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _controller,
-      builder: (context, child) => Opacity(
-        opacity: 0.5 + _controller.value * 0.5,
-        child: child,
-      ),
+      builder: (context, child) =>
+          Opacity(opacity: 0.5 + _controller.value * 0.5, child: child),
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -1408,7 +1708,11 @@ class _LockedChallengesFooterState extends State<_LockedChallengesFooter>
                 SizedBox(width: 8),
                 Text(
                   "Desafios bloqueados",
-                  style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
@@ -1416,7 +1720,11 @@ class _LockedChallengesFooterState extends State<_LockedChallengesFooter>
             const Text(
               "Cumpra todas as missões para desbloqueá-los e ganhe sua "
               "primeira medalha de conquista.",
-              style: TextStyle(color: Colors.white38, fontSize: 11, height: 1.3),
+              style: TextStyle(
+                color: Colors.white38,
+                fontSize: 11,
+                height: 1.3,
+              ),
             ),
           ],
         ),

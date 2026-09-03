@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/aluno_ia_model.dart';
 import '../models/assinatura_status_model.dart';
@@ -21,9 +22,7 @@ class AlunoIaService {
     if (response.statusCode == 404) {
       return null;
     }
-    throw Exception(
-      'Erro ao buscar aluno na Megan (${response.statusCode}).',
-    );
+    throw Exception('Erro ao buscar aluno na Megan (${response.statusCode}).');
   }
 
   /// Cria o registro do aluno na Megan.
@@ -48,15 +47,43 @@ class AlunoIaService {
     final uri = Uri.parse(
       '${ApiConfig.baseUrl}/aluno-ia/${Uri.encodeComponent(userId)}/avancar-missao',
     );
-    final response = await http.post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-    );
+
+    debugPrint('[avancarMissao] ▶ POST $uri');
+    debugPrint('[avancarMissao] ▶ userId enviado: "$userId"');
+
+    final http.Response response;
+    try {
+      response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+      );
+    } catch (e, st) {
+      debugPrint(
+        '[avancarMissao] ✖ Exceção de rede antes de qualquer resposta: $e',
+      );
+      debugPrint('[avancarMissao] ✖ StackTrace: $st');
+      rethrow;
+    }
+
+    debugPrint('[avancarMissao] ◀ status: ${response.statusCode}');
+    debugPrint('[avancarMissao] ◀ headers: ${response.headers}');
+    debugPrint('[avancarMissao] ◀ body: ${response.body}');
 
     if (response.statusCode == 200) {
-      return AlunoIaDto.fromJson(jsonDecode(response.body));
+      final parsed = AlunoIaDto.fromJson(jsonDecode(response.body));
+      debugPrint(
+        '[avancarMissao] ✔ parseado com sucesso: userId=${parsed.userId} '
+        'moduloAtual=${parsed.moduloAtual} missaoAtual=${parsed.missaoAtual} '
+        'ultimaSessao=${parsed.ultimaSessao}',
+      );
+      return parsed;
     }
-    throw Exception('Erro ao avançar missão (${response.statusCode}).');
+    debugPrint(
+      '[avancarMissao] ✖ status inesperado (${response.statusCode}), lançando exceção.',
+    );
+    throw Exception(
+      'Erro ao avançar missão (${response.statusCode}): ${response.body}',
+    );
   }
 
   /// Consulta o status de assinatura do aluno — usado para liberar o botão
@@ -102,6 +129,8 @@ class AlunoIaService {
     if (response.statusCode == 404) {
       throw Exception('Aluno não encontrado.');
     }
-    throw Exception('Erro ao abrir o portal de assinatura (${response.statusCode}).');
+    throw Exception(
+      'Erro ao abrir o portal de assinatura (${response.statusCode}).',
+    );
   }
 }
