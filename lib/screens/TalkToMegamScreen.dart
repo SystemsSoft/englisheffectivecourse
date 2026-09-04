@@ -211,7 +211,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
 
   Future<void> _acceptMission() async {
     final baseUri = Uri.parse(
-      'https://buy.stripe.com/test_8x2aEWbdj4E12mG3wY9AA01',
+      'https://buy.stripe.com/7sY5kFegzaO4fCk120cbC00',
     );
     // client_reference_id permite ao webhook do Stripe identificar qual
     // aluno (userId/ULID na Megan) completou o pagamento.
