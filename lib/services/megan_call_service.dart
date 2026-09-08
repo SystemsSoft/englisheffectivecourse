@@ -125,29 +125,6 @@ class MeganCallService {
     });
   }
 
-  /// Manda uma saudação de texto assim que a sessão conecta, para a Megan
-  /// "atender" a ligação com uma resposta natural — sem esperar o aluno
-  /// falar primeiro. Usa `clientContent` (turno de texto), que é diferente
-  /// de `realtimeInput.audio` e não passa pelo reconhecimento de voz, então
-  /// não aparece na transcrição do aluno.
-  void _sendGreeting() {
-    _sendToSocket(
-      jsonEncode({
-        'clientContent': {
-          'turns': [
-            {
-              'role': 'user',
-              'parts': [
-                {'text': 'Hi!'},
-              ],
-            },
-          ],
-          'turnComplete': true,
-        },
-      }),
-    );
-  }
-
   void _sendAudioChunk(Uint8List pcm16) {
     if (_muted || !_socketActive) return;
     _sendToSocket(
@@ -197,10 +174,12 @@ class MeganCallService {
       _sessionReadyReceived = true;
       if (msg['type'] == 'session_ready') {
         onSessionReady(msg['day'] as int, msg['topic'] as String);
-        // Dispara a Megan a "atender" a ligação: manda uma saudação em
-        // segundo plano, como se o aluno tivesse dito "Hi!" assim que a
-        // chamada conectou.
-        _sendGreeting();
+        // A saudação ("Hi!" na primeira vez, ou um resumo da conversa se uma
+        // troca de chave já tiver acontecido) agora é mandada pelo próprio
+        // servidor, logo depois do "setup" — ver ConversationHistory em
+        // GeminiLiveBridge.kt no backend. Antes era mandada daqui; deixamos
+        // de fazer isso pra não duplicar quando o servidor troca de chave no
+        // meio da ligação (o app nem fica sabendo que isso aconteceu).
         return;
       }
       if (msg['type'] == 'error') {

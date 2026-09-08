@@ -52,7 +52,6 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   String? _topic;
   bool _meganSpeaking = false;
   bool _meganThinking = false;
-  String _userTranscript = '';
   String _meganTranscript = '';
   bool _muted = false;
   String? _callError;
@@ -276,7 +275,6 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
   Future<void> _beginCall() async {
     setState(() {
       _state = MeganCallState.connecting;
-      _userTranscript = '';
       _meganTranscript = '';
       _meganThinking = false;
       _advanceMissionError = null;
@@ -317,11 +315,6 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
       onMeganThinkingChanged: (thinking) {
         if (!mounted) return;
         setState(() => _meganThinking = thinking);
-      },
-      onUserTranscriptChanged: (text) {
-        if (!mounted) return;
-        setState(() => _userTranscript = text);
-        _scrollTranscriptToBottom();
       },
       onMeganTranscriptChanged: (text) {
         if (!mounted) return;
@@ -1486,9 +1479,7 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
           ),
         const SizedBox(height: 12),
         _buildCallStatusRow(),
-        if (_userTranscript.isNotEmpty ||
-            _meganTranscript.isNotEmpty ||
-            _meganThinking)
+        if (_meganTranscript.isNotEmpty || _meganThinking)
           _buildTranscriptBox(),
         if (_callError != null)
           Padding(
@@ -1596,27 +1587,6 @@ class _TalkToMegamScreenState extends State<TalkToMegamScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (_userTranscript.isNotEmpty) ...[
-              const Text(
-                "VOCÊ DISSE",
-                style: TextStyle(
-                  color: Colors.white38,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                _userTranscript,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 13,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-              const SizedBox(height: 10),
-            ],
             if (_meganTranscript.isNotEmpty) ...[
               const Text(
                 "MEGAN DIZ",
