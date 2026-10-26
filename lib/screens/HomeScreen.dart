@@ -6,7 +6,6 @@ import '../viewmodels/upload_viewmodel.dart';
 import 'LoginScreen.dart';
 import 'VideoPlayerScreen.dart';
 import 'ListeningScreen.dart';
-import 'TalkToMegamScreen.dart';
 import 'ProfileScreen.dart';
 import '../WordOfTheDayScreen.dart';
 import 'FlashcardsScreen.dart';
@@ -56,10 +55,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     // Card turma
                     _ClassCard(user: user, textTheme: textTheme),
-                    const SizedBox(height: 16),
-
-                    // Fale com a Megam
-                    const _TalkToMegamBanner(),
                     const SizedBox(height: 24),
 
                     // Título seção
@@ -453,29 +448,6 @@ class _InfoTile extends StatelessWidget {
           ],
         ),
       ],
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Ícone centralizado e clicável Missão Fluência (Megam)
-// ─────────────────────────────────────────────────────────────────────────────
-class _TalkToMegamBanner extends StatelessWidget {
-  const _TalkToMegamBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: GestureDetector(
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const TalkToMegamScreen()),
-        ),
-        child: Image.asset(
-          'assets/logo_missao_fluencia.png',
-          height: 210,
-          fit: BoxFit.contain,
-        ),
-      ),
     );
   }
 }
