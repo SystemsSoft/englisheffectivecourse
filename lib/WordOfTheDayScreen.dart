@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
 import 'app_theme.dart';
+import 'widgets/ui_kit.dart';
 
 // ─── Palavras usadas como seed diário ─────────────────────────────────────────
 const _words = [
@@ -152,7 +153,6 @@ class _WordOfTheDayScreenState extends State<WordOfTheDayScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
     final now = DateTime.now();
     final dateStr =
         '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
@@ -160,73 +160,70 @@ class _WordOfTheDayScreenState extends State<WordOfTheDayScreen> {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
       child: Scaffold(
-        backgroundColor: const Color(0xFFF4F6FB),
-        body: Column(
-          children: [
-            // ── Header ──────────────────────────────────────────────────
-            Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFF1A2150), Color(0xFF2B3A7A), Color(0xFF3D4FA0)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(32),
-                  bottomRight: Radius.circular(32),
-                ),
-                boxShadow: [BoxShadow(color: Color(0x441A2150), blurRadius: 20, offset: Offset(0, 8))],
-              ),
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 4, 24, 28),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
-                        onPressed: () => Navigator.of(context).pop(),
+        backgroundColor: kPageBackground,
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            final hPadding = pagePadding(constraints.maxWidth);
+            final isWide = constraints.maxWidth >= 860;
+
+            return CustomScrollView(
+              physics: const BouncingScrollPhysics(),
+              slivers: [
+                // ── Header ──────────────────────────────────────────────────
+                SliverToBoxAdapter(
+                  child: AppPageHeader(
+                    title: 'Word of the Day',
+                    subtitle: dateStr,
+                    icon: Icons.auto_stories_rounded,
+                    actions: [
+                      GlassIconButton(
+                        icon: Icons.refresh_rounded,
+                        tooltip: 'Reload',
+                        onPressed: _fetch,
                       ),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Word of the Day',
-                              style: textTheme.titleLarge?.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              dateStr,
-                              style: textTheme.bodySmall?.copyWith(color: Colors.white60),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Icon(Icons.auto_stories_rounded, color: Colors.white70, size: 30),
                     ],
                   ),
                 ),
-              ),
-            ),
 
-            // ── Body ────────────────────────────────────────────────────
-            Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator(color: AppColors.navyBlue))
-                  : _error != null
-                      ? _ErrorView(message: _error!, onRetry: _fetch)
-                      : _WordCard(
-                          data: _wordData!,
-                          playing: _playing,
-                          onPlay: _playAudio,
-                          textTheme: textTheme,
-                        ),
-            ),
-          ],
+                // ── Body ────────────────────────────────────────────────────
+                SliverToBoxAdapter(
+                  child: ContentConstrained(
+                    maxWidth: 1040,
+                    padding: EdgeInsets.fromLTRB(hPadding, 24, hPadding, 40),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 350),
+                      child: _loading
+                          ? const Padding(
+                              key: ValueKey('loading'),
+                              padding: EdgeInsets.symmetric(vertical: 80),
+                              child: Center(
+                                child: CircularProgressIndicator(color: AppColors.navyBlue),
+                              ),
+                            )
+                          : _error != null
+                              ? MessageCard(
+                                  key: const ValueKey('error'),
+                                  icon: Icons.wifi_off_rounded,
+                                  iconColor: AppColors.red,
+                                  title: 'Oops!',
+                                  subtitle: _error!,
+                                  actionLabel: 'Try again',
+                                  actionIcon: Icons.refresh_rounded,
+                                  onAction: _fetch,
+                                )
+                              : _WordCard(
+                                  key: const ValueKey('word'),
+                                  data: _wordData!,
+                                  playing: _playing,
+                                  onPlay: _playAudio,
+                                  isWide: isWide,
+                                ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -238,150 +235,309 @@ class _WordCard extends StatelessWidget {
   final _WordData data;
   final bool playing;
   final VoidCallback onPlay;
-  final TextTheme textTheme;
+  final bool isWide;
 
   const _WordCard({
+    super.key,
     required this.data,
     required this.playing,
     required this.onPlay,
-    required this.textTheme,
+    required this.isWide,
   });
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 28, 20, 32),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // ── Palavra principal ──────────────────────────────────────
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF1A2150), Color(0xFF3D4FA0)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+    final textTheme = Theme.of(context).textTheme;
+
+    // ── Palavra principal ──────────────────────────────────────────
+    final hero = FadeSlideIn(
+      child: _WordHero(data: data, playing: playing, onPlay: onPlay, isWide: isWide),
+    );
+
+    final details = [
+      // ── Definição ──────────────────────────────────────────────
+      FadeSlideIn(
+        delay: const Duration(milliseconds: 120),
+        child: _SectionCard(
+          icon: Icons.menu_book_rounded,
+          iconColor: AppColors.navyBlue,
+          title: 'Definition',
+          content: data.definition,
+          textTheme: textTheme,
+        ),
+      ),
+
+      if (data.example != null && data.example!.isNotEmpty) ...[
+        const SizedBox(height: 14),
+        FadeSlideIn(
+          delay: const Duration(milliseconds: 200),
+          child: _SectionCard(
+            icon: Icons.format_quote_rounded,
+            iconColor: AppColors.red,
+            title: 'Example',
+            content: '"${data.example!}"',
+            textTheme: textTheme,
+            contentColor: const Color(0xFF44476A),
+            italic: true,
+          ),
+        ),
+      ],
+
+      const SizedBox(height: 14),
+
+      // ── Dica de estudo ─────────────────────────────────────────
+      FadeSlideIn(
+        delay: const Duration(milliseconds: 280),
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF8E1),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFFFFE082)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF9A825).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.lightbulb_outline_rounded,
+                    color: Color(0xFFF9A825), size: 20),
               ),
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: const [
-                BoxShadow(color: Color(0x441A2150), blurRadius: 18, offset: Offset(0, 6)),
-              ],
-            ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Study Tip: Try to use this word in a sentence today. '
+                  'Writing it down helps your brain remember it faster!',
+                  style: textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF5D4037),
+                    height: 1.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ];
+
+    if (isWide) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(flex: 5, child: hero),
+          const SizedBox(width: 24),
+          Expanded(
+            flex: 6,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: details),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [hero, const SizedBox(height: 20), ...details],
+    );
+  }
+}
+
+// ─── Destaque da palavra ──────────────────────────────────────────────────────
+class _WordHero extends StatelessWidget {
+  final _WordData data;
+  final bool playing;
+  final VoidCallback onPlay;
+  final bool isWide;
+
+  const _WordHero({
+    required this.data,
+    required this.playing,
+    required this.onPlay,
+    required this.isWide,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final hasAudio = data.audioUrl != null && data.audioUrl!.isNotEmpty;
+
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1A2150), Color(0xFF3D4FA0)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: const [
+          BoxShadow(color: Color(0x441A2150), blurRadius: 24, offset: Offset(0, 10)),
+        ],
+      ),
+      child: Stack(
+        children: [
+          const Positioned(right: -40, top: -40, child: GlowCircle(size: 160, alpha: 0.07)),
+          const Positioned(left: -30, bottom: -30, child: GlowCircle(size: 110, alpha: 0.05)),
+          Padding(
+            padding: EdgeInsets.all(isWide ? 32 : 24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.red,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'TODAY',
+                    style: textTheme.labelSmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ),
+                SizedBox(height: isWide ? 28 : 18),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Expanded(
-                      child: Text(
-                        data.word,
-                        style: textTheme.headlineMedium?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 0.5,
+                      child: TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0.9, end: 1),
+                        duration: const Duration(milliseconds: 600),
+                        curve: Curves.easeOutBack,
+                        builder: (context, scale, child) => Transform.scale(
+                          scale: scale,
+                          alignment: Alignment.centerLeft,
+                          child: child,
+                        ),
+                        child: Text(
+                          data.word,
+                          style: (isWide ? textTheme.displaySmall : textTheme.headlineMedium)
+                              ?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
                         ),
                       ),
                     ),
-                    if (data.audioUrl != null && data.audioUrl!.isNotEmpty)
-                      GestureDetector(
-                        onTap: onPlay,
-                        child: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: playing
-                              ? const SizedBox(
-                                  width: 24, height: 24,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.white, strokeWidth: 2),
-                                )
-                              : const Icon(Icons.volume_up_rounded,
-                                  color: Colors.white, size: 24),
-                        ),
-                      ),
+                    if (hasAudio) _AudioButton(playing: playing, onTap: onPlay),
                   ],
                 ),
                 if (data.phonetic.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Text(
                     data.phonetic,
-                    style: textTheme.bodyMedium?.copyWith(color: Colors.white60),
+                    style: textTheme.titleMedium?.copyWith(color: Colors.white60),
                   ),
                 ],
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    data.partOfSpeech,
-                    style: textTheme.labelSmall
-                        ?.copyWith(color: Colors.white70, letterSpacing: 0.5),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // ── Definição ──────────────────────────────────────────────
-          _SectionCard(
-            icon: Icons.menu_book_rounded,
-            iconColor: AppColors.navyBlue,
-            title: 'Definition',
-            content: data.definition,
-            textTheme: textTheme,
-          ),
-
-          if (data.example != null && data.example!.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            _SectionCard(
-              icon: Icons.format_quote_rounded,
-              iconColor: AppColors.red,
-              title: 'Example',
-              content: '"${data.example!}"',
-              textTheme: textTheme,
-              contentColor: const Color(0xFF44476A),
-              italic: true,
-            ),
-          ],
-
-          const SizedBox(height: 28),
-
-          // ── Dica de estudo ─────────────────────────────────────────
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFF8E1),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFFFE082)),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(Icons.lightbulb_outline_rounded,
-                    color: Color(0xFFF9A825), size: 22),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Study Tip: Try to use this word in a sentence today. '
-                    'Writing it down helps your brain remember it faster!',
-                    style: textTheme.bodySmall?.copyWith(
-                      color: const Color(0xFF5D4037),
-                      height: 1.5,
+                const SizedBox(height: 16),
+                if (data.partOfSpeech.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      data.partOfSpeech,
+                      style: textTheme.labelMedium
+                          ?.copyWith(color: Colors.white, letterSpacing: 0.5),
                     ),
                   ),
-                ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─── Botão de áudio com pulso enquanto toca ──────────────────────────────────
+class _AudioButton extends StatefulWidget {
+  final bool playing;
+  final VoidCallback onTap;
+
+  const _AudioButton({required this.playing, required this.onTap});
+
+  @override
+  State<_AudioButton> createState() => _AudioButtonState();
+}
+
+class _AudioButtonState extends State<_AudioButton> with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  );
+
+  @override
+  void didUpdateWidget(covariant _AudioButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.playing && !_pulse.isAnimating) {
+      _pulse.repeat();
+    } else if (!widget.playing && _pulse.isAnimating) {
+      _pulse.reset();
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Listen',
+      child: PressableScale(
+        onTap: widget.playing ? null : widget.onTap,
+        pressedScale: 0.88,
+        child: SizedBox(
+          width: 60,
+          height: 60,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // Onda que se expande enquanto o áudio toca
+              AnimatedBuilder(
+                animation: _pulse,
+                builder: (context, _) => Container(
+                  width: 48 + 12 * _pulse.value,
+                  height: 48 + 12 * _pulse.value,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.redLight.withValues(
+                      alpha: widget.playing ? 0.35 * (1 - _pulse.value) : 0,
+                    ),
+                  ),
+                ),
+              ),
+              Container(
+                width: 48,
+                height: 48,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(colors: [AppColors.red, AppColors.redLight]),
+                  boxShadow: [
+                    BoxShadow(color: Color(0x55C8102E), blurRadius: 12, offset: Offset(0, 4)),
+                  ],
+                ),
+                child: Icon(
+                  widget.playing ? Icons.graphic_eq_rounded : Icons.volume_up_rounded,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -409,15 +565,7 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
-          BoxShadow(color: Color(0x101A2150), blurRadius: 12, offset: Offset(0, 4)),
-        ],
-      ),
+    return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -455,42 +603,3 @@ class _SectionCard extends StatelessWidget {
     );
   }
 }
-
-// ─── Error View ───────────────────────────────────────────────────────────────
-class _ErrorView extends StatelessWidget {
-  final String message;
-  final VoidCallback onRetry;
-
-  const _ErrorView({required this.message, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.wifi_off_rounded, size: 64, color: Color(0xFFB0B3CC)),
-            const SizedBox(height: 16),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(color: const Color(0xFF767AA8)),
-            ),
-            const SizedBox(height: 24),
-            FilledButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Try again'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-

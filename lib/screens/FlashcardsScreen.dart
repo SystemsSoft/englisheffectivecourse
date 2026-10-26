@@ -11,6 +11,7 @@ import '../models/flashcard_model.dart';
 import '../services/flashcard_service.dart';
 import '../viewmodels/user_viewmodel.dart';
 import '../app_theme.dart';
+import '../widgets/ui_kit.dart';
 
 // ─── Banco de flashcards fixos (iniciante) ────────────────────────────────────
 const _builtinCards = [
@@ -317,6 +318,7 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      constraints: const BoxConstraints(maxWidth: 560),
       builder: (_) => Padding(
         padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewInsets.bottom,
@@ -371,37 +373,20 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
                 _FormField(controller: exCtrl, label: 'Example sentence', hint: 'e.g. She was brave enough to speak.'),
                 const SizedBox(height: 24),
                 // Botão salvar
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF1A2150), Color(0xFF3D4FA0)],
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                    ),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      if (!formKey.currentState!.validate()) return;
-                      Navigator.pop(context);
-                      _addCard(_CardData(
-                        wordCtrl.text.trim(),
-                        typeCtrl.text.trim().isEmpty ? 'word' : typeCtrl.text.trim(),
-                        defCtrl.text.trim(),
-                        exCtrl.text.trim(),
-                        isCustom: true,
-                      ));
-                    },
-                    icon: const Icon(Icons.add_rounded, color: Colors.white),
-                    label: const Text('Save Card',
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    ),
-                  ),
+                GradientButton(
+                  label: 'Save Card',
+                  icon: Icons.add_rounded,
+                  onPressed: () {
+                    if (!formKey.currentState!.validate()) return;
+                    Navigator.pop(context);
+                    _addCard(_CardData(
+                      wordCtrl.text.trim(),
+                      typeCtrl.text.trim().isEmpty ? 'word' : typeCtrl.text.trim(),
+                      defCtrl.text.trim(),
+                      exCtrl.text.trim(),
+                      isCustom: true,
+                    ));
+                  },
                 ),
               ],
             ),
@@ -420,109 +405,91 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
       child: Scaffold(
-        backgroundColor: const Color(0xFFF4F6FB),
+        backgroundColor: kPageBackground,
         body: Column(
           children: [
             // ── Header ────────────────────────────────────────────────
-            Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFF1A2150), Color(0xFF2B3A7A), Color(0xFF3D4FA0)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+            AppPageHeader(
+              title: 'Flashcards',
+              subtitle: 'Practice your vocabulary',
+              icon: Icons.style_rounded,
+              actions: [
+                GlassIconButton(
+                  icon: Icons.add_rounded,
+                  tooltip: 'Add card',
+                  onPressed: _showAddDialog,
                 ),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(32),
-                  bottomRight: Radius.circular(32),
+                GlassIconButton(
+                  icon: Icons.shuffle_rounded,
+                  tooltip: 'Shuffle',
+                  onPressed: _restart,
                 ),
-                boxShadow: [BoxShadow(color: Color(0x441A2150), blurRadius: 20, offset: Offset(0, 8))],
-              ),
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 4, 8, 16),
-                  child: Column(
+              ],
+              bottom: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Tabs
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 8,
                     children: [
-                      Row(
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
-                            onPressed: () => Navigator.of(context).pop(),
-                          ),
-                          Expanded(
-                            child: Text('Flashcards',
-                              style: textTheme.titleLarge?.copyWith(
-                                color: Colors.white, fontWeight: FontWeight.bold)),
-                          ),
-                          // Botão adicionar card
-                          IconButton(
-                            icon: const Icon(Icons.add_circle_outline_rounded, color: Colors.white),
-                            tooltip: 'Add card',
-                            onPressed: _showAddDialog,
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.shuffle_rounded, color: Colors.white70),
-                            tooltip: 'Shuffle',
-                            onPressed: _restart,
-                          ),
-                        ],
+                      _TabButton(label: 'Play', icon: Icons.play_arrow_rounded,
+                        selected: _tab == 0, onTap: () => setState(() => _tab = 0)),
+                      _TabButton(
+                        label: 'My Cards (${_customCards.length})',
+                        icon: Icons.bookmarks_rounded,
+                        selected: _tab == 1,
+                        onTap: () => setState(() => _tab = 1),
                       ),
-                      const SizedBox(height: 8),
-                      // Tabs
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Row(
-                          children: [
-                            _TabButton(label: 'Play', icon: Icons.play_arrow_rounded,
-                              selected: _tab == 0, onTap: () => setState(() => _tab = 0)),
-                            const SizedBox(width: 10),
-                            _TabButton(
-                              label: 'My Cards (${_customCards.length})',
-                              icon: Icons.bookmarks_rounded,
-                              selected: _tab == 1,
-                              onTap: () => setState(() => _tab = 1),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      // Barra de progresso (só no tab Play)
-                      if (_tab == 0 && !_finished && _loaded) ...[
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: LinearProgressIndicator(
-                                    value: total == 0 ? 0 : _index / total,
-                                    backgroundColor: Colors.white24,
-                                    color: Colors.white,
-                                    minHeight: 6,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Text('$_index / $total',
-                                style: textTheme.labelSmall?.copyWith(color: Colors.white70)),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _ScorePill(icon: Icons.check_rounded, color: const Color(0xFF43A047), count: _know, label: 'Know'),
-                            const SizedBox(width: 12),
-                            _ScorePill(icon: Icons.close_rounded, color: AppColors.red, count: _dontKnow, label: 'Not yet'),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                      ],
                     ],
                   ),
-                ),
+                  // Barra de progresso (só no tab Play)
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeOutCubic,
+                    child: _tab == 0 && !_finished && _loaded
+                        ? Padding(
+                            padding: const EdgeInsets.only(top: 16),
+                            child: Column(
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: TweenAnimationBuilder<double>(
+                                          tween: Tween(end: total == 0 ? 0 : _index / total),
+                                          duration: const Duration(milliseconds: 400),
+                                          curve: Curves.easeOutCubic,
+                                          builder: (context, value, _) => LinearProgressIndicator(
+                                            value: value,
+                                            backgroundColor: Colors.white24,
+                                            color: Colors.white,
+                                            minHeight: 8,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Text('$_index / $total',
+                                      style: textTheme.labelMedium?.copyWith(
+                                        color: Colors.white, fontWeight: FontWeight.w600)),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    _ScorePill(icon: Icons.check_rounded, color: const Color(0xFF81C784), count: _know, label: 'Know'),
+                                    const SizedBox(width: 10),
+                                    _ScorePill(icon: Icons.close_rounded, color: AppColors.redLight, count: _dontKnow, label: 'Not yet'),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          )
+                        : const SizedBox(width: double.infinity),
+                  ),
+                ],
               ),
             ),
 
@@ -536,8 +503,14 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
                         if (_loadError != null)
                           Container(
                             width: double.infinity,
-                            color: const Color(0xFFFFF3E0),
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            constraints: const BoxConstraints(maxWidth: 720),
+                            margin: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF3E0),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: const Color(0xFFFFE0B2)),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                             child: Row(
                               children: [
                                 const Icon(Icons.wifi_off_rounded, color: Color(0xFFF57C00), size: 16),
@@ -555,8 +528,19 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
                             ),
                           ),
                         Expanded(
-                          child: _tab == 1
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 300),
+                            transitionBuilder: (child, anim) => FadeTransition(
+                              opacity: anim,
+                              child: SlideTransition(
+                                position: Tween(begin: const Offset(0, 0.03), end: Offset.zero)
+                                    .animate(anim),
+                                child: child,
+                              ),
+                            ),
+                            child: _tab == 1
                               ? _MyCardsTab(
+                                  key: const ValueKey('my-cards'),
                                   customCards: _customCards,
                                   onDelete: _deleteCard,
                                   onAdd: _showAddDialog,
@@ -574,6 +558,7 @@ class _FlashcardsScreenState extends State<FlashcardsScreen> {
                                   onRestart: _restart,
                                   textTheme: textTheme,
                                 ),
+                          ),
                         ),
                       ],
                     ),
@@ -596,14 +581,19 @@ class _TabButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return PressableScale(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
         decoration: BoxDecoration(
-          color: selected ? Colors.white : Colors.white.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(20),
+          color: selected ? Colors.white : Colors.white.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: Colors.white.withValues(alpha: selected ? 0 : 0.15)),
+          boxShadow: selected
+              ? const [BoxShadow(color: Color(0x33000000), blurRadius: 10, offset: Offset(0, 4))]
+              : const [],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -665,20 +655,18 @@ class _PlayTabState extends State<_PlayTab> {
     print('[PlayTab] build — deck.length=${deck.length} index=$index finished=${widget.finished} revealed=$_revealed');
 
     if (deck.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.style_rounded, size: 64, color: Color(0xFFB0B3CC)),
-            const SizedBox(height: 16),
-            Text('No cards yet!',
-              style: widget.textTheme.titleMedium?.copyWith(
-                color: AppColors.navyBlue, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Text('Tap + to add your first card.',
-              style: widget.textTheme.bodySmall
-                  ?.copyWith(color: const Color(0xFF767AA8))),
-          ],
+      return const Center(
+        child: SingleChildScrollView(
+          padding: EdgeInsets.all(20),
+          child: ContentConstrained(
+            maxWidth: 520,
+            child: MessageCard(
+              icon: Icons.style_rounded,
+              iconColor: AppColors.navyBlue,
+              title: 'No cards yet!',
+              subtitle: 'Tap + to add your first card.',
+            ),
+          ),
         ),
       );
     }
@@ -693,8 +681,9 @@ class _PlayTabState extends State<_PlayTab> {
       );
     }
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+    return Center(
+      child: SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -704,10 +693,13 @@ class _PlayTabState extends State<_PlayTab> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  _revealed ? 'How well did you know it?' : 'Tap the card to reveal the answer',
-                  style: widget.textTheme.bodySmall
-                      ?.copyWith(color: const Color(0xFF9EA3C8)),
+                Flexible(
+                  child: Text(
+                    _revealed ? 'How well did you know it?' : 'Tap the card to reveal the answer',
+                    textAlign: TextAlign.center,
+                    style: widget.textTheme.bodySmall
+                        ?.copyWith(color: const Color(0xFF9EA3C8)),
+                  ),
                 ),
                 if (deck[index].isCustom) ...[
                   const SizedBox(width: 8),
@@ -730,11 +722,15 @@ class _PlayTabState extends State<_PlayTab> {
           // ── Flashcard unificado — reveal via AnimatedSize ────────────────────────────
           // Sem flip 3D, sem Transform, sem AnimationController.
           // AnimatedSize é um widget interno do Flutter: funciona em debug e release idênticos.
-          _FlashCard(
-            card: deck[index],
-            revealed: _revealed,
-            onTap: _reveal,
-            textTheme: widget.textTheme,
+          // Cada novo card entra deslizando (o _PlayTab é recriado a cada índice)
+          FadeSlideIn(
+            beginOffset: const Offset(0.15, 0),
+            child: _FlashCard(
+              card: deck[index],
+              revealed: _revealed,
+              onTap: _reveal,
+              textTheme: widget.textTheme,
+            ),
           ),
 
           const SizedBox(height: 24),
@@ -743,8 +739,14 @@ class _PlayTabState extends State<_PlayTab> {
           AnimatedOpacity(
             opacity: _revealed ? 1.0 : 0.0,
             duration: const Duration(milliseconds: 300),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            child: AnimatedSlide(
+              offset: _revealed ? Offset.zero : const Offset(0, 0.3),
+              duration: const Duration(milliseconds: 350),
+              curve: Curves.easeOutCubic,
+              child: Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 16,
+              runSpacing: 12,
               children: [
                 _AnswerButton(
                   label: "Don't know",
@@ -752,7 +754,6 @@ class _PlayTabState extends State<_PlayTab> {
                   color: AppColors.red,
                   onTap: _revealed ? () => widget.onAnswer(false) : null,
                 ),
-                const SizedBox(width: 16),
                 _AnswerButton(
                   label: 'I know it!',
                   icon: Icons.check_rounded,
@@ -761,8 +762,10 @@ class _PlayTabState extends State<_PlayTab> {
                 ),
               ],
             ),
+            ),
           ),
         ],
+      ),
       ),
     );
   }
@@ -777,6 +780,7 @@ class _MyCardsTab extends StatelessWidget {
   final TextTheme textTheme;
 
   const _MyCardsTab({
+    super.key,
     required this.customCards, required this.onDelete,
     required this.onAdd, required this.textTheme,
   });
@@ -785,116 +789,154 @@ class _MyCardsTab extends StatelessWidget {
   Widget build(BuildContext context) {
     if (customCards.isEmpty) {
       return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.bookmarks_outlined, size: 64, color: Color(0xFFB0B3CC)),
-              const SizedBox(height: 16),
-              Text("You haven't added any cards yet.",
-                textAlign: TextAlign.center,
-                style: textTheme.titleSmall?.copyWith(
-                  color: AppColors.navyBlue, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Text('Tap + to create your first custom flashcard.',
-                textAlign: TextAlign.center,
-                style: textTheme.bodySmall?.copyWith(color: const Color(0xFF767AA8), height: 1.5)),
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: onAdd,
-                icon: const Icon(Icons.add_rounded),
-                label: const Text('Add First Card'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.navyBlue,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ],
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: ContentConstrained(
+            maxWidth: 520,
+            child: MessageCard(
+              icon: Icons.bookmarks_outlined,
+              iconColor: const Color(0xFF6A1B9A),
+              title: "You haven't added any cards yet.",
+              subtitle: 'Tap + to create your first custom flashcard.',
+              actionLabel: 'Add First Card',
+              actionIcon: Icons.add_rounded,
+              onAction: onAdd,
+            ),
           ),
         ),
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-          child: Row(
-            children: [
-              Text('${customCards.length} card${customCards.length == 1 ? '' : 's'} created',
-                style: textTheme.bodySmall?.copyWith(color: const Color(0xFF767AA8))),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: onAdd,
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text('Add'),
-                style: TextButton.styleFrom(foregroundColor: AppColors.navyBlue),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final hPadding = pagePadding(constraints.maxWidth);
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(0, 20, 0, 32),
+          children: [
+            ContentConstrained(
+              padding: EdgeInsets.symmetric(horizontal: hPadding),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SectionTitle(
+                          title: 'My Cards',
+                          trailing: '${customCards.length} card${customCards.length == 1 ? '' : 's'}',
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      TextButton.icon(
+                        onPressed: onAdd,
+                        icon: const Icon(Icons.add_rounded, size: 18),
+                        label: const Text('Add'),
+                        style: TextButton.styleFrom(foregroundColor: AppColors.navyBlue),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  ResponsiveGrid(
+                    columns: gridColumnsFor(constraints.maxWidth),
+                    children: [
+                      for (var i = 0; i < customCards.length; i++)
+                        FadeSlideIn(
+                          delay: staggerDelay(i),
+                          child: _MyCardTile(
+                            card: customCards[i],
+                            textTheme: textTheme,
+                            onDelete: () async {
+                              final confirm = await showDialog<bool>(
+                                context: context,
+                                builder: (_) => AlertDialog(
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                  title: const Text('Delete card?'),
+                                  content: Text('Remove "${customCards[i].word}" from your cards?'),
+                                  actions: [
+                                    TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context, true),
+                                      child: const Text('Delete', style: TextStyle(color: AppColors.red)),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (confirm == true) onDelete(i);
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
               ),
-            ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// ─── Card da lista "My Cards" ─────────────────────────────────────────────────
+class _MyCardTile extends StatelessWidget {
+  final _CardData card;
+  final TextTheme textTheme;
+  final VoidCallback onDelete;
+
+  const _MyCardTile({required this.card, required this.textTheme, required this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
+      accent: const Color(0xFF6A1B9A),
+      child: Row(
+        children: [
+          Container(
+            width: 46, height: 46,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF4A148C), Color(0xFF9C27B0)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(Icons.style_rounded, color: Colors.white, size: 22),
           ),
-        ),
-        Expanded(
-          child: ListView.separated(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
-            itemCount: customCards.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
-            itemBuilder: (_, i) {
-              final card = customCards[i];
-              return Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: const [
-                    BoxShadow(color: Color(0x101A2150), blurRadius: 10, offset: Offset(0, 3)),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(card.word,
+                        maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: textTheme.bodyLarge?.copyWith(
+                          fontWeight: FontWeight.bold, color: AppColors.navyBlue)),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(card.type,
+                      style: textTheme.labelSmall?.copyWith(color: const Color(0xFF6A1B9A))),
                   ],
                 ),
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  leading: Container(
-                    width: 44, height: 44,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF6A1B9A).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(Icons.style_rounded, color: Color(0xFF6A1B9A), size: 22),
-                  ),
-                  title: Text(card.word,
-                    style: textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.bold, color: AppColors.navyBlue)),
-                  subtitle: Text(card.definition,
-                    maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: textTheme.bodySmall?.copyWith(color: const Color(0xFF767AA8))),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete_outline_rounded, color: AppColors.red, size: 22),
-                    tooltip: 'Delete',
-                    onPressed: () async {
-                      final confirm = await showDialog<bool>(
-                        context: context,
-                        builder: (_) => AlertDialog(
-                          title: const Text('Delete card?'),
-                          content: Text('Remove "${card.word}" from your cards?'),
-                          actions: [
-                            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, true),
-                              child: const Text('Delete', style: TextStyle(color: AppColors.red)),
-                            ),
-                          ],
-                        ),
-                      );
-                      if (confirm == true) onDelete(i);
-                    },
-                  ),
-                ),
-              );
-            },
+                const SizedBox(height: 2),
+                Text(card.definition,
+                  maxLines: 2, overflow: TextOverflow.ellipsis,
+                  style: textTheme.bodySmall?.copyWith(color: kMutedColor, height: 1.4)),
+              ],
+            ),
           ),
-        ),
-      ],
+          IconButton(
+            icon: const Icon(Icons.delete_outline_rounded, color: AppColors.red, size: 22),
+            tooltip: 'Delete',
+            onPressed: onDelete,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -922,32 +964,7 @@ class _FormField extends StatelessWidget {
       maxLines: maxLines,
       validator: validator,
       style: const TextStyle(color: AppColors.navyBlue, fontSize: 14),
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        labelStyle: const TextStyle(color: Color(0xFF767AA8), fontSize: 13),
-        hintStyle: const TextStyle(color: Color(0xFFB0B3CC), fontSize: 13),
-        filled: true,
-        fillColor: const Color(0xFFF4F6FB),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFE8EAF6)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.navyBlue, width: 2),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.red),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.red, width: 2),
-        ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      ),
+      decoration: appInputDecoration(label: label, hint: hint),
     );
   }
 }
@@ -985,10 +1002,12 @@ class _FlashCard extends StatelessWidget {
             end: Alignment.bottomRight,
           );
 
-    return GestureDetector(
-      onTap: onTap,
+    final maxWidth = MediaQuery.sizeOf(context).width - 40;
+    return PressableScale(
+      onTap: revealed ? null : onTap,
+      pressedScale: 0.98,
       child: Container(
-        width: 320,
+        width: maxWidth < 440 ? maxWidth : 440,
         decoration: BoxDecoration(
           gradient: gradient,
           borderRadius: BorderRadius.circular(24),
@@ -1019,7 +1038,7 @@ class _FlashCard extends StatelessWidget {
                 children: [
                   // ── Palavra (sempre visível) ────────────────────────
                   Padding(
-                    padding: EdgeInsets.fromLTRB(24, 32, 24, revealed ? 16 : 32),
+                    padding: EdgeInsets.fromLTRB(24, 40, 24, revealed ? 16 : 40),
                     child: Column(
                       children: [
                         Container(
@@ -1115,7 +1134,7 @@ class _FlashCard extends StatelessWidget {
 }
 
 // ─── Botão de resposta ────────────────────────────────────────────────────────
-class _AnswerButton extends StatelessWidget {
+class _AnswerButton extends StatefulWidget {
   final String label;
   final IconData icon;
   final Color color;
@@ -1124,23 +1143,50 @@ class _AnswerButton extends StatelessWidget {
   const _AnswerButton({required this.label, required this.icon, required this.color, this.onTap});
 
   @override
+  State<_AnswerButton> createState() => _AnswerButtonState();
+}
+
+class _AnswerButtonState extends State<_AnswerButton> {
+  bool _hovered = false;
+
+  @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: color, size: 20),
-            const SizedBox(width: 8),
-            Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 14)),
-          ],
+    final color = widget.color;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: PressableScale(
+        onTap: widget.onTap,
+        pressedScale: 0.92,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          constraints: const BoxConstraints(minWidth: 160),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+          decoration: BoxDecoration(
+            color: _hovered ? color : color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: color.withValues(alpha: _hovered ? 1 : 0.3)),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: _hovered ? 0.3 : 0),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(widget.icon, color: _hovered ? Colors.white : color, size: 20),
+              const SizedBox(width: 8),
+              Text(widget.label,
+                style: TextStyle(
+                  color: _hovered ? Colors.white : color,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14)),
+            ],
+          ),
         ),
       ),
     );
@@ -1161,16 +1207,22 @@ class _ScorePill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
+        color: Colors.white.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.5)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, color: color, size: 14),
           const SizedBox(width: 5),
-          Text('$count $label',
-            style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold)),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 250),
+            transitionBuilder: (child, anim) => ScaleTransition(scale: anim, child: child),
+            child: Text('$count $label',
+              key: ValueKey(count),
+              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+          ),
         ],
       ),
     );
@@ -1198,31 +1250,43 @@ class _ResultView extends StatelessWidget {
             ? 'Good progress, keep going!'
             : 'Keep studying, you\'ll get there!';
 
-    return SingleChildScrollView(
+    return Center(
+      child: SingleChildScrollView(
       padding: const EdgeInsets.all(28),
+      child: ContentConstrained(
+      maxWidth: 520,
       child: Column(
         children: [
-          Text(emoji, style: const TextStyle(fontSize: 64)),
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0.3, end: 1),
+            duration: const Duration(milliseconds: 800),
+            curve: Curves.elasticOut,
+            builder: (context, scale, child) => Transform.scale(scale: scale, child: child),
+            child: Text(emoji, style: const TextStyle(fontSize: 72)),
+          ),
           const SizedBox(height: 16),
           Text(msg,
             style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: AppColors.navyBlue),
             textAlign: TextAlign.center),
           const SizedBox(height: 28),
-          Container(
+          FadeSlideIn(
+            delay: const Duration(milliseconds: 150),
+            child: AppCard(
             padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: const [BoxShadow(color: Color(0x101A2150), blurRadius: 14, offset: Offset(0, 4))],
-            ),
             child: Column(
               children: [
-                Text('$pct%',
-                  style: textTheme.displaySmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: pct >= 80
-                        ? const Color(0xFF43A047)
-                        : pct >= 50 ? const Color(0xFFF9A825) : AppColors.red)),
+                // Porcentagem contando até o resultado
+                TweenAnimationBuilder<int>(
+                  tween: IntTween(begin: 0, end: pct),
+                  duration: const Duration(milliseconds: 1200),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, value, _) => Text('$value%',
+                    style: textTheme.displaySmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: pct >= 80
+                          ? const Color(0xFF43A047)
+                          : pct >= 50 ? const Color(0xFFF9A825) : AppColors.red)),
+                ),
                 Text('score', style: textTheme.bodySmall?.copyWith(color: const Color(0xFF767AA8))),
                 const SizedBox(height: 20),
                 Row(
@@ -1237,34 +1301,20 @@ class _ResultView extends StatelessWidget {
                 ),
               ],
             ),
+            ),
           ),
           const SizedBox(height: 28),
-          SizedBox(
-            width: double.infinity,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF1A2150), Color(0xFF3D4FA0)],
-                  begin: Alignment.centerLeft, end: Alignment.centerRight,
-                ),
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: const [BoxShadow(color: Color(0x441A2150), blurRadius: 12, offset: Offset(0, 4))],
-              ),
-              child: ElevatedButton.icon(
-                onPressed: onRestart,
-                icon: const Icon(Icons.refresh_rounded, color: Colors.white),
-                label: const Text('Play Again',
-                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.transparent,
-                  shadowColor: Colors.transparent,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                ),
-              ),
+          FadeSlideIn(
+            delay: const Duration(milliseconds: 300),
+            child: GradientButton(
+              label: 'Play Again',
+              icon: Icons.refresh_rounded,
+              onPressed: onRestart,
             ),
           ),
         ],
+      ),
+      ),
       ),
     );
   }

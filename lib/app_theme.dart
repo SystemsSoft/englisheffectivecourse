@@ -65,6 +65,16 @@ abstract class AppTheme {
           inversePrimary: const Color(0xFFB8C3FF),
           scrim: AppColors.navyBlue,
         ),
+        // Transições de página suaves em todas as plataformas
+        pageTransitionsTheme: const PageTransitionsTheme(
+          builders: {
+            TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
+            TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+            TargetPlatform.macOS: FadeForwardsPageTransitionsBuilder(),
+            TargetPlatform.windows: FadeForwardsPageTransitionsBuilder(),
+            TargetPlatform.linux: FadeForwardsPageTransitionsBuilder(),
+          },
+        ),
         appBarTheme: const AppBarTheme(
           backgroundColor: AppColors.navyBlue,
           foregroundColor: AppColors.white,
